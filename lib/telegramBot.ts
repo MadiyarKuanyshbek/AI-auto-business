@@ -1,6 +1,6 @@
 import { products } from "@/lib/products";
 import { sql } from "@/lib/db";
-import type { InlineKeyboard } from "@/lib/telegram";
+import { escapeHtml, type InlineKeyboard } from "@/lib/telegram";
 
 export const SITE_URL = process.env.SITE_URL
   ? process.env.SITE_URL.replace(/\/$/, "")
@@ -303,5 +303,124 @@ export async function buildStatusText(): Promise<string> {
     "",
     "👀 <b>Заказы, найденные в группах</b>",
     `Всего: ${groupLeadsTotal[0].count} · сегодня: ${groupLeadsToday[0].count}`,
+    "",
+    "Команды: /leads — новые заявки, /found — найденные бизнесы, /groups — заказы из групп, /help — все команды.",
   ].join("\n");
 }
+
+export const LEAD_STATUS_LABELS: Record<string, string> = {
+  new: "Новая",
+  contacted: "Написали",
+  won: "Договорились",
+  lost: "Отказ",
+};
+
+export type LeadListItem = { id: number; text: string; keyboard: InlineKeyboard };
+
+/** Последние заявки со статусом "новая" — по одному сообщению на заявку, с кнопками смены статуса (команда /leads). */
+export async function buildLeadsList(limit = 5): Promise<{ items: LeadListItem[]; totalNew: number } | null> {
+  if (!sql) return null;
+
+  const rows = (await sql`
+    SELECT id, name, contact, niche, comment, source, created_at FROM leads
+    WHERE status = 'new' ORDER BY created_at DESC LIMIT ${limit}
+  `) as { id: number; name: string; contact: string; niche: string | null; comment: string | null; source: string; created_at: string }[];
+  const [{ count }] = await sql`SELECT count(*) FROM leads WHERE status = 'new'`;
+
+  const items: LeadListItem[] = rows.map((r) => ({
+    id: r.id,
+    text: [
+      `🆕 <b>${escapeHtml(r.name)}</b> (${r.source === "telegram" ? "Telegram" : "Сайт"})`,
+      `Контакт: ${escapeHtml(r.contact)}`,
+      `Ниша: ${escapeHtml(r.niche || "—")}`,
+      r.comment ? `Комментарий: ${escapeHtml(r.comment)}` : null,
+      new Date(r.created_at).toLocaleString("ru-RU"),
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    keyboard: [
+      [
+        { text: "✅ Написал(а)", callback_data: `lead:${r.id}:contacted` },
+        { text: "🤝 Сделка", callback_data: `lead:${r.id}:won` },
+        { text: "❌ Отказ", callback_data: `lead:${r.id}:lost` },
+      ],
+    ],
+  }));
+
+  return { items, totalNew: Number(count) };
+}
+
+/** Топ найденных через автопоиск 2GIS бизнесов по баллу — команда /found. */
+export async function buildFoundBusinessesText(limit = 5): Promise<string> {
+  if (!sql) return "База данных не настроена.";
+
+  const rows = (await sql`
+    SELECT name, industry, city, card_url, score, pitch FROM businesses
+    ORDER BY score DESC, created_at DESC LIMIT ${limit}
+  `) as { name: string; industry: string; city: string; card_url: string; score: number; pitch: string }[];
+  const [{ count }] = await sql`SELECT count(*) FROM businesses`;
+
+  if (rows.length === 0) {
+    return "Пока пусто — автопоиск запускается по понедельникам, либо весь список уже разобран.";
+  }
+
+  const blocks = rows.map(
+    (r) =>
+      `🏢 <b>${escapeHtml(r.name)}</b> (${escapeHtml(r.industry || "?")}, ${escapeHtml(r.city || "?")}) — балл ${r.score}\n` +
+      (r.card_url ? `Карточка: ${r.card_url}\n` : "") +
+      `Черновик:\n${escapeHtml(r.pitch)}`,
+  );
+
+  return (
+    `🏢 <b>Найденные бизнесы (всего ${count}, топ ${rows.length})</b>\n\n` +
+    blocks.join("\n\n") +
+    "\n\nПолный список и остальные — в /admin."
+  );
+}
+
+/** Последние заказы, замеченные в Telegram-группах — команда /groups. */
+export async function buildGroupLeadsText(limit = 5): Promise<string> {
+  if (!sql) return "База данных не настроена.";
+
+  const rows = (await sql`
+    SELECT chat_title, business_label, sender_name, sender_username, message_text, pitch, created_at
+    FROM group_leads ORDER BY created_at DESC LIMIT ${limit}
+  `) as {
+    chat_title: string | null;
+    business_label: string | null;
+    sender_name: string | null;
+    sender_username: string | null;
+    message_text: string | null;
+    pitch: string;
+    created_at: string;
+  }[];
+  const [{ count }] = await sql`SELECT count(*) FROM group_leads`;
+
+  if (rows.length === 0) {
+    return "Пока пусто — ни бот, ни личный аккаунт ещё не заметили подходящих постов в группах.";
+  }
+
+  const blocks = rows.map(
+    (r) =>
+      `👀 <b>${escapeHtml(r.chat_title || "Группа")}</b> — ${escapeHtml(r.business_label || "?")}\n` +
+      `Автор: ${escapeHtml(r.sender_name || "?")} ${r.sender_username ? escapeHtml(r.sender_username) : ""}\n` +
+      `Сообщение: ${escapeHtml(r.message_text || "")}\n` +
+      `${new Date(r.created_at).toLocaleString("ru-RU")}\n` +
+      `Черновик:\n${escapeHtml(r.pitch)}`,
+  );
+
+  return (
+    `👀 <b>Заказы из групп (всего ${count}, последние ${rows.length})</b>\n\n` +
+    blocks.join("\n\n") +
+    "\n\nПолный список — в /admin."
+  );
+}
+
+export const HELP_TEXT =
+  "<b>Команды</b>\n\n" +
+  "/status — сводка по всей системе\n" +
+  "/leads — новые заявки с кнопками смены статуса\n" +
+  "/found — топ бизнесов, найденных автопоиском\n" +
+  "/groups — заказы, замеченные в Telegram-группах\n" +
+  "/suggest — подсказчик готовых ответов, когда сами пишете клиенту\n" +
+  "/suggest_off — выключить подсказчик";

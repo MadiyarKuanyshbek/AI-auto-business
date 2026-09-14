@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { answerCallbackQuery, answerInlineQuery, escapeHtml, notifyOwner, sendTelegramMessage } from "@/lib/telegram";
 import {
+  buildFoundBusinessesText,
+  buildGroupLeadsText,
+  buildLeadsList,
   buildMenuKeyboard,
   buildMenuPromptText,
   buildNichePicker,
@@ -16,6 +19,8 @@ import {
   FAQ_PROMPT_TEXT,
   findNiche,
   GENERIC_ACK,
+  HELP_TEXT,
+  LEAD_STATUS_LABELS,
   matchFaq,
   searchReplySuggestions,
 } from "@/lib/telegramBot";
@@ -155,16 +160,54 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  // Только владелец — статус внутренней системы никому больше не показываем.
+  const isOwner = String(chatId) === ownerChatId;
+
+  // Команды-«панель управления» — только владелец, чтобы через бота видеть
+  // заявки/находки/заказы из групп без захода на сайт в /admin.
   if (text === "/status") {
-    if (String(chatId) === ownerChatId) {
-      const statusText = await buildStatusText();
-      await sendTelegramMessage(chatId, statusText, { html: true });
+    if (isOwner) {
+      await sendTelegramMessage(chatId, await buildStatusText(), { html: true });
     }
     return NextResponse.json({ ok: true });
   }
 
-  const isOwner = String(chatId) === ownerChatId;
+  if (text === "/leads") {
+    if (isOwner) {
+      const result = await buildLeadsList();
+      if (!result || result.items.length === 0) {
+        await sendTelegramMessage(chatId, "Новых заявок нет 🎉");
+      } else {
+        for (const item of result.items) {
+          await sendTelegramMessage(chatId, item.text, { html: true, keyboard: item.keyboard });
+        }
+        if (result.totalNew > result.items.length) {
+          await sendTelegramMessage(chatId, `И ещё ${result.totalNew - result.items.length} — полный список в /admin.`);
+        }
+      }
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  if (text === "/found") {
+    if (isOwner) {
+      await sendTelegramMessage(chatId, await buildFoundBusinessesText(), { html: true });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  if (text === "/groups") {
+    if (isOwner) {
+      await sendTelegramMessage(chatId, await buildGroupLeadsText(), { html: true });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  if (text === "/help") {
+    if (isOwner) {
+      await sendTelegramMessage(chatId, HELP_TEXT, { html: true });
+    }
+    return NextResponse.json({ ok: true });
+  }
 
   // Режим "подсказчик": выбираете продукт/сферу один раз, дальше пересылаете
   // сюда, что пишет живой клиент — бот анализирует и предлагает готовый
@@ -287,6 +330,18 @@ async function handleCallback(callbackId: string, data: string, chatId: number) 
 
   const ownerChatId = process.env.TELEGRAM_CHAT_ID;
   const isOwner = String(chatId) === ownerChatId;
+
+  if (data.startsWith("lead:")) {
+    if (isOwner && sql) {
+      const [, idStr, status] = data.split(":");
+      const leadId = Number(idStr);
+      if (Number.isInteger(leadId) && status in LEAD_STATUS_LABELS && status !== "new") {
+        await sql`UPDATE leads SET status = ${status} WHERE id = ${leadId}`;
+        await sendTelegramMessage(chatId, `Заявка #${leadId} → ${LEAD_STATUS_LABELS[status]}`);
+      }
+    }
+    return;
+  }
 
   if (data === "smenu") {
     if (isOwner) {

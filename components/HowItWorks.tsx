@@ -1,3 +1,5 @@
+import Reveal from "./Reveal";
+
 const steps = [
   {
     step: "1",
@@ -29,16 +31,16 @@ export default function HowItWorks() {
           Как это работает
         </h2>
         <div className="mt-12 grid gap-8 sm:grid-cols-4">
-          {steps.map((s) => (
-            <div key={s.step}>
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent text-sm font-bold text-accent-foreground">
+          {steps.map((s, i) => (
+            <Reveal key={s.step} delay={i * 100} className="group">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent text-sm font-bold text-accent-foreground transition-transform duration-300 group-hover:scale-110">
                 {s.step}
               </div>
               <h3 className="mt-4 text-base font-semibold">{s.title}</h3>
               <p className="mt-2 text-sm text-muted">
                 {s.description}
               </p>
-            </div>
+            </Reveal>
           ))}
         </div>
       </div>

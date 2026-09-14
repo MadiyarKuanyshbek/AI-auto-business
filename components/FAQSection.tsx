@@ -1,3 +1,5 @@
+import Reveal from "./Reveal";
+
 const faqs = [
   {
     question: "Сколько это стоит?",
@@ -24,17 +26,21 @@ export default function FAQSection() {
   return (
     <section id="faq" className="bg-background-alt py-20">
       <div className="mx-auto max-w-3xl px-6">
-        <h2 className="text-center font-display text-3xl font-bold tracking-tight sm:text-4xl">
-          Частые вопросы
-        </h2>
+        <Reveal>
+          <h2 className="text-center font-display text-3xl font-bold tracking-tight sm:text-4xl">
+            Частые вопросы
+          </h2>
+        </Reveal>
         <div className="mt-12 space-y-6">
-          {faqs.map((faq) => (
-            <div key={faq.question}>
-              <h3 className="text-base font-semibold">{faq.question}</h3>
-              <p className="mt-2 text-sm text-muted">
-                {faq.answer}
-              </p>
-            </div>
+          {faqs.map((faq, i) => (
+            <Reveal key={faq.question} delay={i * 80}>
+              <div>
+                <h3 className="text-base font-semibold">{faq.question}</h3>
+                <p className="mt-2 text-sm text-muted">
+                  {faq.answer}
+                </p>
+              </div>
+            </Reveal>
           ))}
         </div>
       </div>

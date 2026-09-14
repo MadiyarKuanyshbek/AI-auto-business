@@ -24,7 +24,9 @@ export default function Header() {
           ))}
         </nav>
         <div className="flex items-center gap-3">
-          <TelegramButton className="hidden sm:inline-flex" />
+          <div className="hidden sm:block">
+            <TelegramButton />
+          </div>
           <a
             href="#lead-form"
             className="rounded-full bg-accent px-5 py-2 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent/90"

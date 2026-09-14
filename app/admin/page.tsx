@@ -2,6 +2,7 @@ import Link from "next/link";
 import { sql, type BusinessRow, type GroupLeadRow, type LeadRow } from "@/lib/db";
 import LogoutButton from "@/components/admin/LogoutButton";
 import CopyPitchButton from "@/components/admin/CopyPitchButton";
+import LeadStatusSelect from "@/components/admin/LeadStatusSelect";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,7 @@ export default async function AdminPage() {
                   <th className="px-4 py-2 font-medium">Ниша</th>
                   <th className="px-4 py-2 font-medium">Комментарий</th>
                   <th className="px-4 py-2 font-medium">Откуда</th>
+                  <th className="px-4 py-2 font-medium">Статус</th>
                   <th className="px-4 py-2 font-medium">Когда</th>
                 </tr>
               </thead>
@@ -89,6 +91,9 @@ export default async function AdminPage() {
                         {r.source === "telegram" ? "Telegram" : "Сайт"}
                       </span>
                     </td>
+                    <td className="px-4 py-2">
+                      <LeadStatusSelect leadId={r.id} status={r.status} />
+                    </td>
                     <td className="px-4 py-2 text-zinc-500">
                       {new Date(r.created_at).toLocaleString("ru-RU")}
                     </td>
@@ -96,7 +101,7 @@ export default async function AdminPage() {
                 ))}
                 {leads.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-6 text-center text-zinc-500">
+                    <td colSpan={7} className="px-4 py-6 text-center text-zinc-500">
                       Пока пусто
                     </td>
                   </tr>

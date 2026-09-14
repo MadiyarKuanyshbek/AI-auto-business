@@ -8,6 +8,8 @@ function getSql() {
 
 export const sql = getSql();
 
+export type LeadStatus = "new" | "contacted" | "won" | "lost";
+
 export type LeadRow = {
   id: number;
   name: string;
@@ -15,6 +17,8 @@ export type LeadRow = {
   niche: string;
   comment: string;
   source: string;
+  status: LeadStatus;
+  reminded_at: string | null;
   created_at: string;
 };
 

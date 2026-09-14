@@ -26,6 +26,10 @@ async function main() {
   `;
   // На случай, если таблица leads уже существовала до появления колонки source.
   await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'site'`;
+  // Статус ведения заявки (new/contacted/won/lost) — для воронки в админке.
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'new'`;
+  // Когда последний раз слали напоминание про эту заявку (cron ниже) — чтобы не дублировать.
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS reminded_at TIMESTAMPTZ`;
 
   await sql`
     CREATE TABLE IF NOT EXISTS businesses (

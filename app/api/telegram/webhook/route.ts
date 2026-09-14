@@ -139,7 +139,7 @@ export async function POST(request: Request) {
   }
 
   const chatId = message.chat.id;
-  const text = message.text.trim();
+  let text = message.text.trim();
 
   // Групповые чаты обрабатываем отдельно от личных сообщений — бот тут
   // только слушает и помечает похожие на заказ посты, сам не отвечает и не
@@ -149,6 +149,32 @@ export async function POST(request: Request) {
       await handleGroupMessage(message.chat, message.message_id, text, message.from);
     }
     return NextResponse.json({ ok: true });
+  }
+
+  // Русские слова-алиасы для команд-«панели управления» — Telegram не
+  // разрешает кириллицу в самих /command (только [a-z0-9_]), а переключать
+  // раскладку ради команды неудобно. Слово без "/" работает так же, если
+  // пишет владелец. Подсказки и автодополнение остаются на /commands —
+  // это просто более быстрый способ набрать то же самое.
+  if (String(chatId) === ownerChatId) {
+    const RU_COMMAND_ALIASES: Record<string, string> = {
+      статус: "/status",
+      лиды: "/leads",
+      заявки: "/leads",
+      найдено: "/found",
+      бизнесы: "/found",
+      группы: "/groups",
+      заказы: "/groups",
+      цена: "/price",
+      цены: "/price",
+      стоимость: "/price",
+      помощь: "/help",
+      команды: "/help",
+      подсказчик: "/suggest",
+      подскажи: "/suggest",
+    };
+    const alias = RU_COMMAND_ALIASES[text.toLowerCase()];
+    if (alias) text = alias;
   }
 
   // Telegram sends "/start <payload>" for deep links like t.me/bot?start=site,

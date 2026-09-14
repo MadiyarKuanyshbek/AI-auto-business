@@ -1,0 +1,106 @@
+#!/usr/bin/env node
+// Создаёт/обновляет таблицы в Postgres (Neon). Безопасно запускать повторно.
+// Использование: DATABASE_URL=... node scripts/init-db.mjs
+
+import { neon } from "@neondatabase/serverless";
+
+async function main() {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    console.error("Не задан DATABASE_URL.");
+    process.exit(1);
+  }
+
+  const sql = neon(url);
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS leads (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      contact TEXT NOT NULL,
+      niche TEXT,
+      comment TEXT,
+      source TEXT NOT NULL DEFAULT 'site',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  // На случай, если таблица leads уже существовала до появления колонки source.
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'site'`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS businesses (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      industry TEXT,
+      city TEXT,
+      address TEXT,
+      card_url TEXT,
+      whatsapp TEXT,
+      score INTEGER NOT NULL DEFAULT 0,
+      qualified BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  // Не даёт повторно завести одну и ту же карточку 2GIS при регулярных
+  // запусках find-clients.mjs — пустые card_url (ручной ввод) не считаются.
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS businesses_card_url_idx
+    ON businesses (card_url)
+    WHERE card_url <> ''
+  `;
+  // Готовый персональный текст обращения, собранный score-leads.mjs под
+  // конкретный бизнес — чтобы его было видно и можно было скопировать в админке.
+  await sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS pitch TEXT NOT NULL DEFAULT ''`;
+
+  // Заявки, которые бот сам заметил в Telegram-группах (см. lib/groupWatcher.ts) —
+  // сообщение + черновик ответа. Отправка — только вручную, бот сам не пишет.
+  await sql`
+    CREATE TABLE IF NOT EXISTS group_leads (
+      id SERIAL PRIMARY KEY,
+      chat_id BIGINT NOT NULL,
+      chat_title TEXT,
+      message_id BIGINT NOT NULL,
+      niche TEXT,
+      business_label TEXT,
+      message_text TEXT,
+      sender_username TEXT,
+      sender_name TEXT,
+      pitch TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  // Не даёт задублировать один и тот же пост, если апдейт от Telegram придёт дважды.
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS group_leads_chat_message_idx
+    ON group_leads (chat_id, message_id)
+  `;
+
+  // Привязывает Telegram-чат к последней выбранной нише и следит, чтобы
+  // одна и та же переписка не плодила по лиду на каждое сообщение.
+  await sql`
+    CREATE TABLE IF NOT EXISTS telegram_sessions (
+      chat_id BIGINT PRIMARY KEY,
+      niche TEXT,
+      niche_label TEXT,
+      lead_saved BOOLEAN NOT NULL DEFAULT false,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+
+  // Хартбит от долгоживущих процессов вне Vercel (сейчас — group-listener.mjs),
+  // чтобы Telegram-бот мог ответить на /status, жив ли мониторинг групп.
+  await sql`
+    CREATE TABLE IF NOT EXISTS system_status (
+      key TEXT PRIMARY KEY,
+      value JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+
+  console.log("Готово: таблицы leads, businesses, group_leads, telegram_sessions, system_status существуют и обновлены.");
+}
+
+main().catch((error) => {
+  console.error(error.message);
+  process.exit(1);
+});

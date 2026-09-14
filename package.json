@@ -6,12 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "group-listener": "node scripts/run-group-listener.mjs",
+    "group-listener:once": "node --env-file=.env.local scripts/group-listener.mjs"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "@vercel/analytics": "^2.0.1",
     "next": "16.3.4",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "teleproto": "^1.229.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

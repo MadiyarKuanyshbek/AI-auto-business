@@ -36,6 +36,20 @@ yarn-error.log*
 # vercel
 .vercel
 
+# local lead storage fallback (used only when Airtable isn't configured)
+leads.json
+
+# Telegram user-account session (scripts/group-listener.mjs) — gives full
+# access to the personal Telegram account, must never be committed or shared
+data/*.session
+data/*.session.txt
+
+# List of groups auto-joined by group-listener.mjs — local runtime state
+data/group-discovery-state.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+.vercel
+.env*

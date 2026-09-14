@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { escapeHtml, notifyOwner } from "@/lib/telegram";
 import { waLinkFor } from "@/lib/phone";
+import { matchFaq } from "@/lib/telegramBot";
+import { sql } from "@/lib/db";
 
 type WhatsAppWebhookPayload = {
   entry?: Array<{
@@ -17,9 +19,27 @@ type WhatsAppWebhookPayload = {
   }>;
 };
 
-function buildAutoReply(firstName?: string) {
+const GENERIC_ACK =
+  "Уже передал ваше сообщение менеджеру, он ответит вам здесь в ближайшее время 🙌";
+
+function buildAutoReply(text: string, firstName?: string) {
   const greeting = firstName ? `Здравствуйте, ${firstName}!` : "Здравствуйте!";
-  return `${greeting} Это Автопилот.AI — мы настраиваем ИИ-администраторов для бизнеса: приём клиентов, запись, поддержка 24/7. Уже передал ваше сообщение менеджеру, он ответит вам здесь в ближайшее время 🙌`;
+  const faqAnswer = matchFaq(text);
+  return faqAnswer
+    ? `${greeting} ${faqAnswer}`
+    : `${greeting} Это Автопилот.AI — мы настраиваем ИИ-администраторов для бизнеса: приём клиентов, запись, поддержка 24/7. ${GENERIC_ACK}`;
+}
+
+/** Первое сообщение с этого номера сохраняем как лид (видно в /admin и /leads) — дальше в этой же переписке повторно не дублируем. */
+async function saveLeadIfNew(waId: string, name: string, text: string) {
+  if (!sql) return;
+  const contact = `WhatsApp ${waId}`;
+  const [existing] = await sql`SELECT 1 FROM leads WHERE contact = ${contact} AND source = 'whatsapp' LIMIT 1`;
+  if (existing) return;
+  await sql`
+    INSERT INTO leads (name, contact, niche, comment, source)
+    VALUES (${name}, ${contact}, ${"WhatsApp (без ниши)"}, ${text}, 'whatsapp')
+  `;
 }
 
 async function sendWhatsAppMessage(to: string, text: string) {
@@ -100,8 +120,9 @@ export async function POST(request: Request) {
 
   try {
     await Promise.all([
-      sendWhatsAppMessage(from, buildAutoReply(firstName)),
+      sendWhatsAppMessage(from, buildAutoReply(text, firstName)),
       notifyOwner(forwarded, { html: true }),
+      saveLeadIfNew(from, contactName, text),
     ]);
   } catch (error) {
     console.error("Failed to process WhatsApp message", error);

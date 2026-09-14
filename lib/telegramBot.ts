@@ -304,6 +304,11 @@ export async function buildStatusText(): Promise<string> {
     "👀 <b>Заказы, найденные в группах</b>",
     `Всего: ${groupLeadsTotal[0].count} · сегодня: ${groupLeadsToday[0].count}`,
     "",
+    "💬 <b>WhatsApp</b>",
+    process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID
+      ? "🟢 подключён (Cloud API)"
+      : "🔴 не подключён — см. docs/WHATSAPP_SETUP.md",
+    "",
     "Команды: /leads — новые заявки, /found — найденные бизнесы, /groups — заказы из групп, /help — все команды.",
   ].join("\n");
 }

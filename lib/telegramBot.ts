@@ -1,6 +1,7 @@
 import { products } from "@/lib/products";
 import { sql } from "@/lib/db";
 import { escapeHtml, type InlineKeyboard } from "@/lib/telegram";
+import { formatPriceRange, PRICING } from "@/lib/pricing";
 
 export const SITE_URL = process.env.SITE_URL
   ? process.env.SITE_URL.replace(/\/$/, "")
@@ -211,7 +212,7 @@ export type ReplySuggestion = { title: string; text: string; source: string };
  * (demoRules) сразу — на этом этапе неизвестно, с каким именно бизнесом
  * говорит владелец, поэтому не сужаем до одной ниши, как в /suggest.
  */
-export function searchReplySuggestions(query: string, limit = 8): ReplySuggestion[] {
+export function searchReplySuggestions(query: string, limit = 15): ReplySuggestion[] {
   const normalized = query.trim().toLowerCase();
   const results: ReplySuggestion[] = [];
 
@@ -229,6 +230,24 @@ export function searchReplySuggestions(query: string, limit = 8): ReplySuggestio
       if (keywordMatches(rule.keywords)) {
         results.push({ title: `${rule.keywords[0]} (${product.menuLabel})`, text: rule.answer, source: product.menuLabel });
       }
+    }
+  }
+
+  const priceKeywords = ["цена", "цену", "стоимост", "прайс", "почем", "сколько сто"];
+  for (const product of products) {
+    const range = PRICING[product.id];
+    if (!range) continue;
+    const matchesPrice =
+      normalized === "" ||
+      keywordMatches(priceKeywords) ||
+      normalized.includes(product.menuLabel.toLowerCase()) ||
+      product.menuLabel.toLowerCase().includes(normalized);
+    if (matchesPrice) {
+      results.push({
+        title: `${product.icon} Цена: ${product.menuLabel}`,
+        text: `${product.icon} ${product.menuLabel} — ${formatPriceRange(range)}`,
+        source: "Цены",
+      });
     }
   }
 
@@ -421,11 +440,30 @@ export async function buildGroupLeadsText(limit = 5): Promise<string> {
   );
 }
 
+/** Полная вилка цен по всем продуктам — команда /price. Черновая, для внутреннего использования (см. lib/pricing.ts). */
+export function buildPriceText(): string {
+  const lines = products
+    .map((product) => {
+      const range = PRICING[product.id];
+      if (!range) return null;
+      return `${product.icon} <b>${product.menuLabel}</b>\n${formatPriceRange(range)}`;
+    })
+    .filter(Boolean);
+
+  return (
+    "💰 <b>Цены (черновик, не для сайта)</b>\n\n" +
+    lines.join("\n\n") +
+    "\n\nНижняя граница — простая интеграция, верхняя — несколько каналов/кастомная CRM.\n" +
+    "Быстрый доступ в любом чате: наберите <code>@BusinessAI_auto_bot цена</code> — появится готовая строка под конкретный продукт, останется скопировать."
+  );
+}
+
 export const HELP_TEXT =
   "<b>Команды</b>\n\n" +
   "/status — сводка по всей системе\n" +
   "/leads — новые заявки с кнопками смены статуса\n" +
   "/found — топ бизнесов, найденных автопоиском\n" +
   "/groups — заказы, замеченные в Telegram-группах\n" +
+  "/price — вилка цен по всем продуктам\n" +
   "/suggest — подсказчик готовых ответов, когда сами пишете клиенту\n" +
   "/suggest_off — выключить подсказчик";

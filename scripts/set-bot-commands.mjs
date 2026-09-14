@@ -34,6 +34,7 @@ async function main() {
       { command: "leads", description: "Новые заявки (с кнопками статуса)" },
       { command: "found", description: "Топ бизнесов из автопоиска" },
       { command: "groups", description: "Заказы из Telegram-групп" },
+      { command: "price", description: "Вилка цен по всем продуктам" },
       { command: "suggest", description: "Подсказчик ответов клиенту" },
       { command: "suggest_off", description: "Выключить подсказчик" },
       { command: "help", description: "Список команд" },

@@ -10,6 +10,7 @@ import {
   buildNichePicker,
   buildNichePitch,
   buildOpeningMessage,
+  buildPriceText,
   buildReplySuggestion,
   buildStatusText,
   buildSuggestNichePicker,
@@ -198,6 +199,13 @@ export async function POST(request: Request) {
   if (text === "/groups") {
     if (isOwner) {
       await sendTelegramMessage(chatId, await buildGroupLeadsText(), { html: true });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  if (text === "/price") {
+    if (isOwner) {
+      await sendTelegramMessage(chatId, buildPriceText(), { html: true });
     }
     return NextResponse.json({ ok: true });
   }

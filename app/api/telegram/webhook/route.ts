@@ -151,12 +151,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  const isOwner = String(chatId) === ownerChatId;
+  // Нужно знать заранее, активен ли подсказчик: если да, любой текст — это
+  // пересланное сообщение клиента для анализа, а не команда. Иначе слово
+  // вроде "цена"/"статус" внутри реплики клиента перехватилось бы как
+  // команда вместо того, чтобы попасть в подсказчик.
+  const copilotState = isOwner ? await getCopilotState(chatId) : null;
+  const copilotActive = Boolean(copilotState?.active);
+
   // Русские слова-алиасы для команд-«панели управления» — Telegram не
   // разрешает кириллицу в самих /command (только [a-z0-9_]), а переключать
   // раскладку ради команды неудобно. Слово без "/" работает так же, если
-  // пишет владелец. Подсказки и автодополнение остаются на /commands —
-  // это просто более быстрый способ набрать то же самое.
-  if (String(chatId) === ownerChatId) {
+  // пишет владелец и подсказчик сейчас не активен. Подсказки и
+  // автодополнение остаются на /commands — это просто более быстрый способ
+  // набрать то же самое.
+  if (isOwner && !copilotActive) {
     const RU_COMMAND_ALIASES: Record<string, string> = {
       статус: "/status",
       лиды: "/leads",
@@ -186,8 +195,6 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ ok: true });
   }
-
-  const isOwner = String(chatId) === ownerChatId;
 
   // Команды-«панель управления» — только владелец, чтобы через бота видеть
   // заявки/находки/заказы из групп без захода на сайт в /admin.
@@ -264,7 +271,6 @@ export async function POST(request: Request) {
   }
 
   if (isOwner) {
-    const copilotState = await getCopilotState(chatId);
     if (copilotState?.active) {
       const suggestion = buildReplySuggestion(text, { productId: copilotState.productId });
       await sendTelegramMessage(

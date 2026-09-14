@@ -492,6 +492,7 @@ async function main() {
       const chat = await message.getChat();
       const chatTitle = chat?.title || String(message.chatId);
       const sender = await message.getSender();
+      if (sender?.bot) return;
       const senderName = sender?.firstName || sender?.title || null;
       const senderUsername = sender?.username ? `@${sender.username}` : null;
 

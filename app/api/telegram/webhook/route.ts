@@ -25,7 +25,7 @@ type TelegramUpdate = {
   message?: {
     message_id: number;
     chat: { id: number; type: string; title?: string };
-    from?: { id: number; first_name?: string; username?: string };
+    from?: { id: number; first_name?: string; username?: string; is_bot?: boolean };
     text?: string;
   };
   callback_query?: {
@@ -139,7 +139,9 @@ export async function POST(request: Request) {
   // только слушает и помечает похожие на заказ посты, сам не отвечает и не
   // пишет автору (см. lib/groupWatcher.ts, почему полная автоматизация тут не делается).
   if (message.chat.type === "group" || message.chat.type === "supergroup") {
-    await handleGroupMessage(message.chat, message.message_id, text, message.from);
+    if (!message.from?.is_bot) {
+      await handleGroupMessage(message.chat, message.message_id, text, message.from);
+    }
     return NextResponse.json({ ok: true });
   }
 
@@ -192,8 +194,11 @@ export async function POST(request: Request) {
         chatId,
         `💡 Предложенный ответ (скопируйте и отправьте клиенту):\n\n${suggestion}\n\n/suggest_off — выключить подсказчик`,
       );
-      return NextResponse.json({ ok: true });
     }
+    // Ваши собственные сообщения боту вне /suggest и нераспознанных команд —
+    // не лид и не клиент, поэтому дальше их обрабатывать (сохранять,
+    // пересылать себе же уведомлением, авто-отвечать FAQ) не нужно.
+    return NextResponse.json({ ok: true });
   }
 
   const from = message.from;

@@ -4,26 +4,45 @@ import { escapeHtml, notifyOwner } from "@/lib/telegram";
 import { normalizePhone, waLinkFor } from "@/lib/phone";
 import { getNicheLabels } from "@/lib/products";
 
+type Intent = "inquiry" | "purchase";
+type Plan = "setup" | "subscription";
+
 type LeadPayload = {
   name: string;
   contact: string;
   niche: string;
   comment: string;
+  intent: Intent;
+  plan?: Plan;
 };
 
 const NICHE_LABELS = getNicheLabels();
+const PLAN_LABELS: Record<Plan, string> = {
+  setup: "Разовая настройка",
+  subscription: "Ежемесячная подписка",
+};
 
 function isValidPayload(value: unknown): value is LeadPayload {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
+  const intentOk = record.intent === undefined || record.intent === "inquiry" || record.intent === "purchase";
+  const planOk = record.plan === undefined || record.plan === "setup" || record.plan === "subscription";
   return (
     typeof record.name === "string" &&
     record.name.trim().length > 0 &&
     typeof record.contact === "string" &&
     record.contact.trim().length > 0 &&
     typeof record.niche === "string" &&
-    typeof record.comment === "string"
+    typeof record.comment === "string" &&
+    intentOk &&
+    planOk
   );
+}
+
+function commentWithIntent(lead: LeadPayload) {
+  if (lead.intent !== "purchase") return lead.comment;
+  const tag = `[Покупка · ${PLAN_LABELS[lead.plan ?? "setup"]}]`;
+  return lead.comment ? `${tag} ${lead.comment}` : tag;
 }
 
 async function saveLead(lead: LeadPayload) {
@@ -31,7 +50,7 @@ async function saveLead(lead: LeadPayload) {
 
   await sql`
     INSERT INTO leads (name, contact, niche, comment, source)
-    VALUES (${lead.name}, ${lead.contact}, ${NICHE_LABELS[lead.niche] || lead.niche}, ${lead.comment}, 'site')
+    VALUES (${lead.name}, ${lead.contact}, ${NICHE_LABELS[lead.niche] || lead.niche}, ${commentWithIntent(lead)}, 'site')
   `;
 
   return { skipped: false as const };
@@ -43,16 +62,21 @@ async function notifyTelegram(lead: LeadPayload, phoneDigits: string) {
     `Здравствуйте, ${lead.name}! Это Автопилот.AI, вы оставляли заявку на сайте.`,
   );
 
+  const isPurchase = lead.intent === "purchase";
+
   const text = [
-    "🆕 <b>Новая заявка с сайта</b>",
+    isPurchase ? "🛒 <b>Готов оплатить!</b>" : "🆕 <b>Новая заявка с сайта</b>",
     `Имя: ${escapeHtml(lead.name)}`,
     `WhatsApp: ${escapeHtml(lead.contact)}`,
     `Ниша: ${escapeHtml(NICHE_LABELS[lead.niche] || lead.niche)}`,
+    isPurchase ? `Пакет: ${escapeHtml(PLAN_LABELS[lead.plan ?? "setup"])}` : null,
     lead.comment ? `Комментарий: ${escapeHtml(lead.comment)}` : null,
+    isPurchase ? "" : null,
+    isPurchase ? "Отправьте клиенту реквизиты Kaspi для оплаты." : null,
     "",
     `<a href="${waLink}">Открыть чат в WhatsApp →</a>`,
   ]
-    .filter(Boolean)
+    .filter((line) => line !== null)
     .join("\n");
 
   return notifyOwner(text, { html: true });
@@ -76,6 +100,8 @@ export async function POST(request: Request) {
     contact: body.contact.trim(),
     niche: body.niche.trim(),
     comment: body.comment.trim(),
+    intent: body.intent ?? "inquiry",
+    plan: body.plan,
   };
 
   // Format check only (valid-looking phone number) — confirming the number

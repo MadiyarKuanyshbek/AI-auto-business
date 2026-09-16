@@ -6,12 +6,16 @@ import { isValidPhone } from "@/lib/phone";
 import { getNicheGroups, OTHER_NICHE_LABEL, OTHER_NICHE_SLUG } from "@/lib/products";
 
 type Status = "idle" | "submitting" | "success" | "error";
+type Intent = "inquiry" | "purchase";
+type Plan = "setup" | "subscription";
 
 const nicheGroups = getNicheGroups();
 
 export default function LeadForm() {
   const [status, setStatus] = useState<Status>("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  const [intent, setIntent] = useState<Intent>("inquiry");
+  const [plan, setPlan] = useState<Plan>("setup");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -24,6 +28,8 @@ export default function LeadForm() {
       contact: (form.elements.namedItem("contact") as HTMLInputElement).value.trim(),
       niche: (form.elements.namedItem("niche") as HTMLSelectElement).value,
       comment: (form.elements.namedItem("comment") as HTMLTextAreaElement).value.trim(),
+      intent,
+      plan: intent === "purchase" ? plan : undefined,
     };
 
     if (!data.name || !data.contact) {
@@ -52,8 +58,10 @@ export default function LeadForm() {
       }
 
       setStatus("success");
-      track("lead_submitted", { niche: data.niche });
+      track("lead_submitted", { niche: data.niche, intent });
       form.reset();
+      setIntent("inquiry");
+      setPlan("setup");
     } catch {
       setStatus("error");
       setErrorMessage("Не получилось отправить заявку. Попробуйте ещё раз чуть позже.");
@@ -64,9 +72,13 @@ export default function LeadForm() {
   if (status === "success") {
     return (
       <div className="rounded-2xl border border-accent/30 bg-accent/10 p-8 text-center">
-        <h3 className="text-xl font-semibold">Заявка отправлена!</h3>
+        <h3 className="text-xl font-semibold">
+          {intent === "purchase" ? "Заявка на оформление отправлена!" : "Заявка отправлена!"}
+        </h3>
         <p className="mt-2 text-sm text-muted">
-          Мы свяжемся с вами в течение рабочего дня.
+          {intent === "purchase"
+            ? "Мы свяжемся с вами и пришлём реквизиты для оплаты через Kaspi в течение часа."
+            : "Мы свяжемся с вами в течение рабочего дня."}
         </p>
       </div>
     );
@@ -74,6 +86,56 @@ export default function LeadForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="grid grid-cols-2 gap-2 rounded-full border border-border bg-white/5 p-1">
+        <button
+          type="button"
+          onClick={() => setIntent("inquiry")}
+          className={`rounded-full px-3 py-2 text-xs font-semibold transition-colors sm:text-sm ${
+            intent === "inquiry"
+              ? "bg-accent text-accent-foreground"
+              : "text-muted hover:text-foreground"
+          }`}
+        >
+          💬 Узнать подробнее
+        </button>
+        <button
+          type="button"
+          onClick={() => setIntent("purchase")}
+          className={`rounded-full px-3 py-2 text-xs font-semibold transition-colors sm:text-sm ${
+            intent === "purchase"
+              ? "bg-accent text-accent-foreground"
+              : "text-muted hover:text-foreground"
+          }`}
+        >
+          🛒 Готов оформить
+        </button>
+      </div>
+
+      {intent === "purchase" && (
+        <div>
+          <label htmlFor="plan" className="block text-sm font-medium">
+            Что оформляем
+          </label>
+          <select
+            id="plan"
+            name="plan"
+            value={plan}
+            onChange={(event) => setPlan(event.target.value as Plan)}
+            className="mt-1 w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-foreground outline-none focus:border-accent"
+          >
+            <option value="setup" className="bg-surface text-foreground">
+              Разовая настройка
+            </option>
+            <option value="subscription" className="bg-surface text-foreground">
+              Ежемесячная подписка
+            </option>
+          </select>
+          <p className="mt-1 text-xs text-muted">
+            Точную сумму и реквизиты Kaspi пришлём в переписке — стоимость зависит от сложности.
+          </p>
+        </div>
+      )}
+
       <div>
         <label htmlFor="name" className="block text-sm font-medium">
           Имя
@@ -148,7 +210,11 @@ export default function LeadForm() {
         disabled={status === "submitting"}
         className="w-full rounded-full bg-accent px-6 py-3 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent/90 disabled:opacity-60"
       >
-        {status === "submitting" ? "Отправляем..." : "Отправить заявку"}
+        {status === "submitting"
+          ? "Отправляем..."
+          : intent === "purchase"
+            ? "Оформить и получить реквизиты"
+            : "Отправить заявку"}
       </button>
     </form>
   );

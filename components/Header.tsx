@@ -1,4 +1,5 @@
 import TelegramButton from "./TelegramButton";
+import WhatsAppButton from "./WhatsAppButton";
 
 const navLinks = [
   { href: "#products", label: "Продукты" },
@@ -24,7 +25,8 @@ export default function Header() {
           ))}
         </nav>
         <div className="flex items-center gap-3">
-          <div className="hidden sm:block">
+          <div className="hidden items-center gap-3 sm:flex">
+            <WhatsAppButton />
             <TelegramButton />
           </div>
           <a

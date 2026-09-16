@@ -21,6 +21,9 @@ export default function Hero() {
           сотрудника.
         </p>
         <div className="animate-fade-up mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row [animation-delay:300ms]">
+          <WhatsAppButton className="px-8 py-3 text-base">
+            Написать в WhatsApp
+          </WhatsAppButton>
           <TelegramButton className="px-8 py-3 text-base transition-transform hover:scale-[1.03] active:scale-[0.98]" />
           <a
             href="#products"
@@ -29,11 +32,6 @@ export default function Hero() {
             Смотреть продукты
           </a>
         </div>
-        <WhatsAppButton
-          className="animate-fade-up mt-4 !inline-flex !bg-transparent !px-0 !text-muted [animation-delay:400ms] hover:!bg-transparent hover:!text-foreground"
-        >
-          или напишите нам в WhatsApp
-        </WhatsAppButton>
       </div>
     </section>
   );

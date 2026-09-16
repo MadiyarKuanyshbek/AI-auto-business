@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Onest, IBM_Plex_Sans } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SITE_URL } from "@/lib/siteUrl";
+import WhatsAppFloat from "@/components/WhatsAppFloat";
 import "./globals.css";
 
 const onest = Onest({
@@ -58,6 +59,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
         />
         {children}
+        <WhatsAppFloat />
         <Analytics />
       </body>
     </html>

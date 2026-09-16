@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import type { Business, Product } from "@/lib/products";
+import Link from "next/link";
+import { getDemoConfig, type Business, type Product, type ResolvedDemoConfig } from "@/lib/products";
+import { SITE_URL } from "@/lib/siteUrl";
 import TelegramButton from "./TelegramButton";
 import WhatsAppButton from "./WhatsAppButton";
 
@@ -9,14 +11,14 @@ type Message = { role: "bot" | "user"; text: string };
 
 const TYPING_DELAY_MS = 450;
 
-function matchAnswer(product: Product, input: string): string {
+function matchAnswer(config: ResolvedDemoConfig, input: string): string {
   const normalized = input.toLowerCase();
-  for (const rule of product.demoRules) {
+  for (const rule of config.rules) {
     if (rule.keywords.some((keyword) => normalized.includes(keyword))) {
       return rule.answer;
     }
   }
-  return product.demoFallback;
+  return config.fallback;
 }
 
 export default function ProductDemoModal({
@@ -28,11 +30,24 @@ export default function ProductDemoModal({
   business: Business;
   onClose: () => void;
 }) {
+  const demoConfig = getDemoConfig(product, business);
   const [messages, setMessages] = useState<Message[]>([
-    { role: "bot", text: product.demoGreeting(business.label) },
+    { role: "bot", text: demoConfig.greeting },
   ]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const demoUrl = `${SITE_URL}/demo/${product.id}/${business.slug}`;
+
+  async function copyDemoLink() {
+    try {
+      await navigator.clipboard.writeText(demoUrl);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      window.prompt("Скопируйте ссылку:", demoUrl);
+    }
+  }
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -47,7 +62,7 @@ export default function ProductDemoModal({
     const text = input.trim();
     if (!text || isTyping) return;
 
-    const answer = matchAnswer(product, text);
+    const answer = matchAnswer(demoConfig, text);
     setMessages((prev) => [...prev, { role: "user", text }]);
     setInput("");
     setIsTyping(true);
@@ -133,7 +148,7 @@ export default function ProductDemoModal({
         </div>
 
         <form onSubmit={handleSubmit} className="border-t border-border p-4">
-          <p className="mb-2 text-xs text-muted">{product.demoHint}</p>
+          <p className="mb-2 text-xs text-muted">{demoConfig.hint}</p>
           <div className="flex gap-2">
             <input
               type="text"
@@ -154,6 +169,22 @@ export default function ProductDemoModal({
         </form>
 
         <div className="flex flex-col gap-2 border-t border-border p-4">
+          <div className="flex gap-2">
+            <Link
+              href={`/demo/${product.id}/${business.slug}`}
+              target="_blank"
+              className="flex-1 rounded-full border border-accent/40 bg-accent/10 px-4 py-2.5 text-center text-sm font-medium text-accent transition-colors hover:bg-accent/20"
+            >
+              🎬 Смотреть анимацию
+            </Link>
+            <button
+              type="button"
+              onClick={copyDemoLink}
+              className="flex-1 rounded-full border border-border bg-white/5 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-white/10"
+            >
+              {linkCopied ? "✅ Скопировано" : "🔗 Ссылка для клиента"}
+            </button>
+          </div>
           <TelegramButton className="w-full py-2.5">
             Обсудить в Telegram
           </TelegramButton>

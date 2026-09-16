@@ -102,7 +102,7 @@ export default function ProductDemoModal({
           <p className="mb-3 text-xs font-medium text-muted">
             Как это устроено «под капотом»:
           </p>
-          <div className="flex items-center gap-1 overflow-x-auto pb-1">
+          <div className="no-scrollbar flex items-center gap-1 overflow-x-auto pb-1">
             {product.flow.map((step, index) => (
               <div key={step.title} className="flex items-center gap-1">
                 <div className="flex w-24 flex-shrink-0 flex-col items-center gap-1 text-center">

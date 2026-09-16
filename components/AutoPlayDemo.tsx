@@ -128,8 +128,8 @@ export default function AutoPlayDemo({
         : "";
 
   return (
-    <div className="flex w-full max-w-sm flex-col items-center gap-6">
-      <div className="flex w-full flex-col items-center gap-2">
+    <div className="mx-auto flex w-full max-w-4xl flex-col items-center gap-6 lg:flex-row lg:items-start lg:justify-center">
+      <div className="flex w-full max-w-sm flex-col items-center gap-2 lg:w-[360px] lg:flex-shrink-0">
         <p className="text-xs font-medium text-muted">
           📱 Так клиент видит это в своём WhatsApp
         </p>
@@ -210,13 +210,38 @@ export default function AutoPlayDemo({
         )}
       </div>
 
-      <div className="w-full rounded-2xl border border-border bg-surface p-5 shadow-xl">
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-surface p-5 shadow-xl lg:max-w-md lg:flex-1 lg:sticky lg:top-8">
         <p className="text-xs font-semibold uppercase tracking-wide text-accent">
           ⚙️ А вот что в этот момент происходит у вас за кулисами
         </p>
         <h2 className="mt-1 font-display text-base font-bold">{objectName}</h2>
 
-        <div className="mt-4 flex items-center gap-1 overflow-x-auto pb-1">
+        {/* Мобильный вид: вертикальный пронумерованный список — читается без прокрутки */}
+        <div className="mt-4 flex flex-col gap-3 sm:hidden">
+          {flow.map((step, index) => (
+            <div key={step.title} className="flex items-start gap-3">
+              <div
+                className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-sm transition-colors duration-500 ${
+                  index < flowRevealed
+                    ? "bg-emerald-500/20 text-emerald-400"
+                    : "bg-white/5 text-muted"
+                }`}
+              >
+                {index < flowRevealed ? "✅" : index + 1}
+              </div>
+              <p
+                className={`pt-1 text-sm leading-snug transition-colors duration-500 ${
+                  index < flowRevealed ? "text-foreground" : "text-muted"
+                }`}
+              >
+                {step.title}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {/* Десктоп/планшет: горизонтальная схема со стрелками */}
+        <div className="no-scrollbar mt-4 hidden items-center gap-1 overflow-x-auto pb-1 sm:flex">
           {flow.map((step, index) => (
             <div key={step.title} className="flex items-center gap-1">
               <div

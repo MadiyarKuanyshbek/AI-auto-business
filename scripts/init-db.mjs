@@ -222,7 +222,23 @@ async function main() {
   // открытом виде, а PBKDF2-хэш "соль.хэш" (см. lib/portalAuth.ts).
   await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS portal_password_hash TEXT`;
 
-  console.log("Готово: таблицы leads, businesses, group_leads, telegram_sessions, system_status, subscriptions, subscription_payments, telegram_orders существуют и обновлены.");
+  // Журнал моментов, когда бот НЕ понял клиента (непонятная позиция, сбой
+  // разбора, неподдерживаемый тип сообщения и т.п.) — не "самообучение" (это
+  // ненадёжно для боевого бота), а данные, по которым видно, что реально
+  // путает клиентов, чтобы осознанно поправить меню/промпт.
+  await sql`
+    CREATE TABLE IF NOT EXISTS bot_confusion_log (
+      id SERIAL PRIMARY KEY,
+      subscription_id INTEGER NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
+      customer_chat_id BIGINT NOT NULL,
+      reason TEXT NOT NULL,
+      message_text TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS bot_confusion_log_sub_idx ON bot_confusion_log (subscription_id, created_at DESC)`;
+
+  console.log("Готово: таблицы leads, businesses, group_leads, telegram_sessions, system_status, subscriptions, subscription_payments, telegram_orders, bot_confusion_log существуют и обновлены.");
 }
 
 main().catch((error) => {

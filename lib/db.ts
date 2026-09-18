@@ -137,3 +137,12 @@ export type TelegramOrderRow = {
   created_at: string;
   updated_at: string;
 };
+
+export type BotConfusionRow = {
+  id: number;
+  subscription_id: number;
+  customer_chat_id: number;
+  reason: string;
+  message_text: string | null;
+  created_at: string;
+};

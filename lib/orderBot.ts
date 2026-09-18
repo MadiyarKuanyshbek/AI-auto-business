@@ -8,6 +8,22 @@ import { SITE_URL } from "@/lib/siteUrl";
 // появится самостоятельная загрузка меню клиентом, путь переедет в БД.
 const MENU_PHOTO_URLS = [`${SITE_URL}/menu/page1.jpg`, `${SITE_URL}/menu/page2.jpg`];
 
+/** Не "самообучение" (боевой бот не должен сам переписывать себе промпт —
+ * ненадёжно и небезопасно), а журнал моментов, где бот реально не понял
+ * клиента. Видно в /admin/bot-issues — по этим данным можно осознанно
+ * поправить меню или промпт, а не гадать, что вызывает путаницу. */
+export async function logConfusion(subscriptionId: number, chatId: number, reason: string, text: string | null) {
+  if (!sql) return;
+  try {
+    await sql`
+      INSERT INTO bot_confusion_log (subscription_id, customer_chat_id, reason, message_text)
+      VALUES (${subscriptionId}, ${chatId}, ${reason}, ${text?.slice(0, 500) ?? null})
+    `;
+  } catch (err) {
+    console.error("Failed to log bot confusion:", err);
+  }
+}
+
 type IncomingMessage = {
   text?: string;
   fileId?: string;
@@ -366,6 +382,7 @@ export async function processOrderMessage(sub: SubscriptionRow, message: Incomin
     }
     const parsed = await extractOrderItems(menu, order.items, text);
     if (!parsed) {
+      await logConfusion(sub.id, message.chatId, "extraction_failed", text);
       await reply(sub, message.chatId, t.fallback());
       return;
     }
@@ -383,6 +400,7 @@ export async function processOrderMessage(sub: SubscriptionRow, message: Incomin
     // из того же сообщения добавились успешно (иначе клиент решит, что бот
     // просто проигнорировал часть заказа, и узнает об этом только на кассе).
     const unclearSuffix = parsed.unclear ? t.unclearNote() : "";
+    if (parsed.unclear) await logConfusion(sub.id, message.chatId, "unclear_item", text);
 
     if (parsed.finished) {
       if (order.items.length === 0) {
@@ -423,7 +441,11 @@ export async function processOrderMessage(sub: SubscriptionRow, message: Incomin
     }
 
     // Не про заказ (приветствие/вопрос) — не тратим лишний AI-вызов, просто мягко подталкиваем.
-    if (isNew) await sendMenuPhotos(sub, message.chatId);
+    if (isNew) {
+      await sendMenuPhotos(sub, message.chatId);
+    } else {
+      await logConfusion(sub.id, message.chatId, "fallback", text);
+    }
     await reply(sub, message.chatId, isNew ? t.menu(formatMenuText(menu)) : t.fallback());
     return;
   }

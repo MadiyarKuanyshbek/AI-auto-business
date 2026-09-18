@@ -71,6 +71,26 @@ export async function GET(request: Request) {
     );
   }
 
+  // Заодно — не только "жив ли вебхук", но и "много ли бот путается": если за
+  // сутки накопилось непривычно много непонятых сообщений (см. bot_confusion_log,
+  // components/orderBot.ts logConfusion), это стоит показать владельцу — возможно,
+  // клиенты массово просят то, чего нет в меню, и его пора расширить.
+  const CONFUSION_ALERT_THRESHOLD = 5;
+  const confusionCounts = (await sql`
+    SELECT s.business_name, COUNT(*)::int AS count
+    FROM bot_confusion_log c
+    JOIN subscriptions s ON s.id = c.subscription_id
+    WHERE c.created_at > now() - interval '24 hours'
+    GROUP BY s.business_name
+    HAVING COUNT(*) >= ${CONFUSION_ALERT_THRESHOLD}
+  `) as { business_name: string; count: number }[];
+
+  for (const row of confusionCounts) {
+    reports.push(
+      `🤔 ${row.business_name}: бот не понял клиентов ${row.count} раз(а) за последние сутки — посмотрите /admin/bot-issues, возможно стоит расширить меню или промпт.`,
+    );
+  }
+
   if (reports.length > 0) {
     await notifyOwner(`🩺 Ежедневная проверка Telegram-ботов:\n\n${reports.join("\n")}`);
   }

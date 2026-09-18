@@ -8,6 +8,7 @@ const TABS = [
   { href: "/admin/companies/viewed", label: "Компании (просмотрено)" },
   { href: "/admin/subscriptions", label: "Подписки" },
   { href: "/admin/orders", label: "Заказы (Telegram)" },
+  { href: "/admin/bot-issues", label: "Что бот не понял" },
   { href: "/admin/groups", label: "Заказы из Telegram-групп" },
 ];
 

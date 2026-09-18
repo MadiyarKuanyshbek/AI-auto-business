@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { sql, type SubscriptionRow } from "@/lib/db";
 import { sendTelegramMessageAs, answerCallbackQueryAs } from "@/lib/telegram";
 import { generateAiReply } from "@/src/gemini";
-import { processOrderMessage, handleOwnerCallback } from "@/lib/orderBot";
+import { processOrderMessage, handleOwnerCallback, logConfusion } from "@/lib/orderBot";
 
 // generateAiReply умеет ретраить до 5 раз на 2 модели — в худшем случае это
 // может растянуться дольше, чем Telegram готов ждать ответ вебхука (видели
@@ -116,6 +116,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ own
   if (!text && !fileId) {
     const kind = unsupportedKind(message);
     if (kind) {
+      await logConfusion(sub.id, chatId, "unsupported_type", kind);
       await sendTelegramMessageAs(
         sub.telegram_bot_token,
         chatId,

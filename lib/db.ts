@@ -55,5 +55,39 @@ export type BusinessRow = {
   score: number;
   qualified: boolean;
   pitch: string;
+  viewed: boolean;
   created_at: string;
+};
+
+export type SubscriptionStatus = "pending_payment" | "active" | "expired" | "cancelled";
+
+export type SubscriptionRow = {
+  id: number;
+  owner_id: string;
+  product_id: string;
+  business_slug: string | null;
+  business_name: string;
+  contact_name: string;
+  contact_phone: string;
+  contact_telegram: string | null;
+  price_kzt: number;
+  status: SubscriptionStatus;
+  current_period_end: string | null;
+  pairing_code: string | null;
+  reminded_3d_at: string | null;
+  reminded_1d_at: string | null;
+  otp_code: string | null;
+  otp_expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SubscriptionPaymentStatus = "claimed" | "confirmed" | "rejected";
+
+export type SubscriptionPaymentRow = {
+  id: number;
+  subscription_id: number;
+  status: SubscriptionPaymentStatus;
+  claimed_at: string;
+  confirmed_at: string | null;
 };

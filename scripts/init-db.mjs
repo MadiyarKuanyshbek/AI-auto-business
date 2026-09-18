@@ -55,6 +55,9 @@ async function main() {
   // Готовый персональный текст обращения, собранный score-leads.mjs под
   // конкретный бизнес — чтобы его было видно и можно было скопировать в админке.
   await sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS pitch TEXT NOT NULL DEFAULT ''`;
+  // Отметка "уже посмотрел это в админке" — чтобы отличать бизнесы, до
+  // которых ещё не дошли руки, от уже разобранных.
+  await sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS viewed BOOLEAN NOT NULL DEFAULT false`;
 
   // Заявки, которые бот сам заметил в Telegram-группах (см. lib/groupWatcher.ts) —
   // сообщение + черновик ответа. Отправка — только вручную, бот сам не пишет.
@@ -101,7 +104,52 @@ async function main() {
     )
   `;
 
-  console.log("Готово: таблицы leads, businesses, group_leads, telegram_sessions, system_status существуют и обновлены.");
+  // Подписки на WhatsApp-бота (самообслуживание): владелец бизнеса
+  // регистрируется, оплачивает переводом на Kaspi, после подтверждения
+  // оплаты в админке боту выдаётся код привязки WhatsApp.
+  await sql`
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      id SERIAL PRIMARY KEY,
+      owner_id TEXT NOT NULL UNIQUE,
+      product_id TEXT NOT NULL,
+      business_slug TEXT,
+      business_name TEXT NOT NULL,
+      contact_name TEXT NOT NULL,
+      contact_phone TEXT NOT NULL,
+      contact_telegram TEXT,
+      price_kzt INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending_payment',
+      current_period_end TIMESTAMPTZ,
+      pairing_code TEXT,
+      reminded_3d_at TIMESTAMPTZ,
+      reminded_1d_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  // Личный кабинет клиента: одноразовый код входа, приходит клиенту в его
+  // же WhatsApp (сообщение самому себе от его бота). Один активный код на
+  // подписку — новый запрос перезаписывает предыдущий.
+  await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS otp_code TEXT`;
+  await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMPTZ`;
+
+  // Журнал заявок на оплату ("я оплатил") — отдельно от subscriptions,
+  // чтобы не терять историю, если платёж отклонят или будет продление.
+  await sql`
+    CREATE TABLE IF NOT EXISTS subscription_payments (
+      id SERIAL PRIMARY KEY,
+      subscription_id INTEGER NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'claimed',
+      claimed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      confirmed_at TIMESTAMPTZ
+    )
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS subscription_payments_subscription_idx
+    ON subscription_payments (subscription_id)
+  `;
+
+  console.log("Готово: таблицы leads, businesses, group_leads, telegram_sessions, system_status, subscriptions, subscription_payments существуют и обновлены.");
 }
 
 main().catch((error) => {

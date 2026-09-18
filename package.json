@@ -8,11 +8,16 @@
     "start": "next start",
     "lint": "eslint",
     "group-listener": "node scripts/run-group-listener.mjs",
-    "group-listener:once": "node --env-file=.env.local scripts/group-listener.mjs"
+    "group-listener:once": "node --env-file=.env.local scripts/group-listener.mjs",
+    "test-wa": "esbuild scripts/test-wa.ts --bundle --platform=node --format=esm --packages=external --outfile=scripts/.build/test-wa.mjs && node --env-file=.env.local scripts/.build/test-wa.mjs",
+    "build:wa-daemon": "esbuild scripts/wa-daemon.ts --bundle --platform=node --format=esm --packages=external --outfile=scripts/.build/wa-daemon.mjs",
+    "wa-daemon": "npm run build:wa-daemon && node --env-file=.env.local scripts/.build/wa-daemon.mjs"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@neondatabase/serverless": "^1.1.0",
     "@vercel/analytics": "^2.0.1",
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
     "next": "16.3.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
@@ -23,9 +28,11 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
     "tailwindcss": "^4",
+    "tsx": "^4.23.13",
     "typescript": "^5"
   }
 }

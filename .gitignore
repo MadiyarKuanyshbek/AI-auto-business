@@ -51,5 +51,15 @@ data/group-discovery-state.json
 *.tsbuildinfo
 next-env.d.ts
 
+# compiled test scripts (esbuild output)
+scripts/.build
+
+# WhatsApp session credentials (baileys) — as sensitive as a password, never commit
+/sessions
+
+# Personal contact numbers (family/friends) — keep out of the repo, use
+# contacts/personal-contacts.example.json as the template
+/contacts/personal-contacts.json
+
 .vercel
 .env*

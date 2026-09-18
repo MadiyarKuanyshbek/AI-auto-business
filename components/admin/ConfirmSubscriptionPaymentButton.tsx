@@ -14,6 +14,13 @@ const PERIOD_OPTIONS = [
   { months: 120, label: "10 лет" },
 ];
 
+const ERROR_MESSAGES: Record<string, string> = {
+  daemon_unreachable:
+    "WhatsApp-демон недоступен — подписку нельзя активировать без него (VPS ещё не поднят). Это ожидаемо, пока WhatsApp не подключён.",
+  not_pending: "Эта подписка уже не ждёт оплаты — обновите страницу.",
+  not_found: "Подписка не найдена.",
+};
+
 export default function ConfirmSubscriptionPaymentButton({ subscriptionId }: { subscriptionId: number }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -32,7 +39,8 @@ export default function ConfirmSubscriptionPaymentButton({ subscriptionId }: { s
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
-        throw new Error(body.error ?? "request_failed");
+        const code = body.error ?? "request_failed";
+        throw new Error(ERROR_MESSAGES[code] ?? `Не получилось (${code})`);
       }
       startTransition(() => router.refresh());
     } catch (err) {

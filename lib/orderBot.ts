@@ -46,6 +46,10 @@ const PICKUP_WORDS = ["самовывоз", "заберу", "сам заберу
 const DELIVERY_WORDS = ["доставк", "привез", "жетк", "әкел"];
 const YES_WORDS = ["да", "верно", "ок", "окей", "подтвер", "давай", "го", "иә", "дұрыс"];
 const NO_WORDS = ["нет", "измен", "не так", "поправ", "жоқ"];
+// То же, чем помечает "finished": true промпт extractOrderItems — нужно
+// вычищать из текста, когда клиент прислал "это всё, доставка на X" одним
+// сообщением, иначе кусок "это всё," попадёт в адрес как есть.
+const FINISH_WORDS = ["это всё", "это все", "больше ничего", "оформляйте", "оформляй", "хватит", "болды"];
 
 function matchesAny(text: string, words: string[]) {
   const lower = text.toLowerCase();
@@ -263,6 +267,47 @@ async function saveOrder(order: TelegramOrderRow) {
   `;
 }
 
+/** Пытается разобрать способ получения (и адрес) из текста; мутирует order
+ * на успехе и возвращает итоговое состояние ("confirm" или "address").
+ * Возвращает null, если в тексте нет ни слова про самовывоз/доставку —
+ * вызывающий код сам решает, что делать в этом случае (переспросить и т.п.).
+ * Общая логика для явного шага "самовывоз или доставка?" и для случая,
+ * когда клиент указал это же самое одним сообщением с "это всё, ... адрес". */
+async function tryResolveDelivery(
+  order: TelegramOrderRow,
+  text: string,
+  lowerText: string,
+): Promise<"confirm" | "address" | null> {
+  const isPickup = matchesAny(lowerText, PICKUP_WORDS);
+  const isDelivery = matchesAny(lowerText, DELIVERY_WORDS);
+
+  if (isPickup) {
+    order.delivery_type = "pickup";
+    order.address = null;
+    order.total_kzt = computeTotal(order.items);
+    return "confirm";
+  }
+
+  if (isDelivery) {
+    order.delivery_type = "delivery";
+    const remainder = text
+      .replace(new RegExp(DELIVERY_WORDS.join("|"), "i"), "")
+      .replace(new RegExp(FINISH_WORDS.join("|"), "gi"), "")
+      // Хвостовые союзы/пунктуация, которые остаются после вырезания фраз
+      // выше ("это всё, ... на Абая 10" → ", ... на Абая 10").
+      .replace(/^[\s,.;:—-]*(и|а)?[\s,.;:—-]*/i, "")
+      .trim();
+    if (remainder.length > 5) {
+      order.address = remainder;
+      order.total_kzt = computeTotal(order.items);
+      return "confirm";
+    }
+    return "address";
+  }
+
+  return null;
+}
+
 // Постоянная клавиатура над полем ввода — клиент видит доступные "команды"
 // и может нажать вместо печати; заодно и без "/", как обычное сообщение.
 const REPLY_KEYBOARD = [["📋 Меню / Мәзір", "❌ Отмена / Бас тарту"]];
@@ -344,9 +389,21 @@ export async function processOrderMessage(sub: SubscriptionRow, message: Incomin
         await reply(sub, message.chatId, t.emptyCartFinish() + unclearSuffix);
         return;
       }
-      order.state = "delivery";
+      // Клиент мог сразу написать всё одним сообщением ("это всё, доставка
+      // на Абая 10") — пробуем разобрать способ получения тут же, а не
+      // всегда переспрашивать то, что уже было сказано.
+      const resolvedState = await tryResolveDelivery(order, text, lowerText);
+      order.state = resolvedState ?? "delivery";
       await saveOrder(order);
-      await reply(sub, message.chatId, t.askDelivery(formatCart(order.items), computeTotal(order.items)) + unclearSuffix);
+      if (resolvedState) {
+        await reply(
+          sub,
+          message.chatId,
+          (resolvedState === "address" ? t.askAddress() : t.confirm(buildSummary(order, sub))) + unclearSuffix,
+        );
+      } else {
+        await reply(sub, message.chatId, t.askDelivery(formatCart(order.items), computeTotal(order.items)) + unclearSuffix);
+      }
       return;
     }
 
@@ -372,41 +429,14 @@ export async function processOrderMessage(sub: SubscriptionRow, message: Incomin
   }
 
   if (order.state === "delivery") {
-    if (!text) {
+    const resolvedState = text ? await tryResolveDelivery(order, text, lowerText) : null;
+    if (!resolvedState) {
       await reply(sub, message.chatId, t.askDelivery(formatCart(order.items), computeTotal(order.items)));
       return;
     }
-    const isDelivery = matchesAny(lowerText, DELIVERY_WORDS);
-    const isPickup = matchesAny(lowerText, PICKUP_WORDS);
-
-    if (isPickup) {
-      order.delivery_type = "pickup";
-      order.address = null;
-      order.total_kzt = computeTotal(order.items);
-      order.state = "confirm";
-      await saveOrder(order);
-      await reply(sub, message.chatId, t.confirm(buildSummary(order, sub)));
-      return;
-    }
-
-    if (isDelivery) {
-      order.delivery_type = "delivery";
-      const remainder = text.replace(new RegExp(DELIVERY_WORDS.join("|"), "i"), "").trim();
-      if (remainder.length > 5) {
-        order.address = remainder;
-        order.total_kzt = computeTotal(order.items);
-        order.state = "confirm";
-        await saveOrder(order);
-        await reply(sub, message.chatId, t.confirm(buildSummary(order, sub)));
-      } else {
-        order.state = "address";
-        await saveOrder(order);
-        await reply(sub, message.chatId, t.askAddress());
-      }
-      return;
-    }
-
-    await reply(sub, message.chatId, t.askDelivery(formatCart(order.items), computeTotal(order.items)));
+    order.state = resolvedState;
+    await saveOrder(order);
+    await reply(sub, message.chatId, resolvedState === "address" ? t.askAddress() : t.confirm(buildSummary(order, sub)));
     return;
   }
 

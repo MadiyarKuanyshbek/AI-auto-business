@@ -1,4 +1,8 @@
 export type InlineKeyboard = Array<Array<{ text: string; callback_data: string }>>;
+/** Постоянная клавиатура над полем ввода (не под конкретным сообщением, как
+ * InlineKeyboard) — нажатие кнопки отправляет её текст обычным сообщением,
+ * так что клиент видит доступные команды и может нажать вместо печати. */
+export type ReplyKeyboard = string[][];
 
 /**
  * Никогда не бросает исключение — доставка уведомления в Telegram не должна
@@ -14,8 +18,18 @@ export async function sendTelegramMessageAs(
   botToken: string,
   chatId: number | string,
   text: string,
-  options?: { html?: boolean; keyboard?: InlineKeyboard },
+  options?: { html?: boolean; keyboard?: InlineKeyboard; replyKeyboard?: ReplyKeyboard },
 ) {
+  const replyMarkup = options?.keyboard
+    ? { inline_keyboard: options.keyboard }
+    : options?.replyKeyboard
+      ? {
+          keyboard: options.replyKeyboard.map((row) => row.map((label) => ({ text: label }))),
+          resize_keyboard: true,
+          is_persistent: true,
+        }
+      : undefined;
+
   try {
     const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: "POST",
@@ -25,7 +39,7 @@ export async function sendTelegramMessageAs(
         text,
         parse_mode: options?.html ? "HTML" : undefined,
         disable_web_page_preview: options?.html ? true : undefined,
-        reply_markup: options?.keyboard ? { inline_keyboard: options.keyboard } : undefined,
+        reply_markup: replyMarkup,
       }),
     });
 

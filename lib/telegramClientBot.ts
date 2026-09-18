@@ -22,6 +22,29 @@ export async function getBotInfo(botToken: string): Promise<TelegramBotInfo | nu
   }
 }
 
+/** Список команд для нативного меню Telegram (иконка "/" у поля ввода) —
+ * работает наравне с обычными словами, которые уже понимает orderBot. */
+export async function registerBotCommands(botToken: string): Promise<boolean> {
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/setMyCommands`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        commands: [
+          { command: "menu", description: "Показать меню и цены" },
+          { command: "cancel", description: "Отменить текущий заказ" },
+        ],
+      }),
+    });
+    if (!response.ok) return false;
+    const data = await response.json();
+    return Boolean(data.ok);
+  } catch (error) {
+    console.error("Telegram setMyCommands failed:", error instanceof Error ? error.message : error);
+    return false;
+  }
+}
+
 /** Регистрирует вебхук клиентского бота на наш URL с секретом, который
  * Telegram будет присылать обратно в заголовке X-Telegram-Bot-Api-Secret-Token
  * на каждый апдейт — так мы проверяем, что запрос реально от Telegram. */

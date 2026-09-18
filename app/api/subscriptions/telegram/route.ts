@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { normalizePhone } from "@/lib/phone";
 import { products } from "@/lib/products";
-import { getBotInfo, registerWebhook } from "@/lib/telegramClientBot";
+import { getBotInfo, registerBotCommands, registerWebhook } from "@/lib/telegramClientBot";
 import { SITE_URL } from "@/lib/siteUrl";
 
 type TelegramSubscriptionPayload = {
@@ -97,6 +97,7 @@ export async function POST(request: Request) {
     // сможет пересохранить токен в настройках личного кабинета позже.
     console.error(`Failed to register Telegram webhook for owner ${ownerId}`);
   }
+  await registerBotCommands(botToken);
 
   return NextResponse.json({ id, botUsername: botInfo.username });
 }

@@ -176,8 +176,12 @@ async function saveOrder(order: TelegramOrderRow) {
   `;
 }
 
+// Постоянная клавиатура над полем ввода — клиент видит доступные "команды"
+// и может нажать вместо печати; заодно и без "/", как обычное сообщение.
+const REPLY_KEYBOARD = [["📋 Меню / Мәзір", "❌ Отмена / Бас тарту"]];
+
 async function reply(sub: SubscriptionRow, chatId: number, text: string) {
-  await sendTelegramMessageAs(sub.telegram_bot_token!, chatId, text);
+  await sendTelegramMessageAs(sub.telegram_bot_token!, chatId, text, { replyKeyboard: REPLY_KEYBOARD });
 }
 
 async function sendMenuPhotos(sub: SubscriptionRow, chatId: number) {

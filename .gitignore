@@ -63,3 +63,4 @@ scripts/.build
 
 .vercel
 .env*
+scripts/_tmp_*

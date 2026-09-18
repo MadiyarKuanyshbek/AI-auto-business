@@ -35,6 +35,31 @@ export default async function PortalPage() {
   const productLabel = products.find((p) => p.id === sub.product_id)?.title ?? sub.product_id;
   const needsRenewal = sub.status === "expired" || sub.status === "pending_payment";
 
+  let botStatus: "connected" | "connecting" | "not_started" | "unknown" = "unknown";
+  if (sub.status === "active") {
+    try {
+      const bridgeUrl = process.env.WA_BRIDGE_URL ?? "http://127.0.0.1:4001";
+      const secret = process.env.INTERNAL_BRIDGE_SECRET;
+      const response = await fetch(`${bridgeUrl}/bots/${sub.owner_id}/status`, {
+        headers: { "X-Internal-Secret": secret ?? "" },
+        signal: AbortSignal.timeout(5000),
+        cache: "no-store",
+      });
+      if (response.ok) {
+        botStatus = (await response.json()).status;
+      }
+    } catch {
+      // Демон недоступен (например, локальная разработка) — просто не покажем статус.
+    }
+  }
+
+  const BOT_STATUS_LABELS: Record<string, string> = {
+    connected: "🟢 Подключён",
+    connecting: "🟡 Подключается",
+    not_started: "⚪ Не запущен",
+    unknown: "—",
+  };
+
   return (
     <div className="min-h-screen bg-background px-6 py-12">
       <div className="mx-auto max-w-lg">
@@ -61,12 +86,25 @@ export default async function PortalPage() {
               <span className="font-medium">{new Date(sub.current_period_end).toLocaleDateString("ru-RU")}</span>
             </div>
           )}
+          {sub.status === "active" && (
+            <div className="mt-2 flex items-center justify-between text-sm">
+              <span className="text-muted">Бот в WhatsApp</span>
+              <span className="font-medium">{BOT_STATUS_LABELS[botStatus]}</span>
+            </div>
+          )}
         </div>
+
+        <Link
+          href="/portal/settings"
+          className="mt-4 block w-full rounded-full border border-border px-6 py-3 text-center text-sm font-semibold transition-colors hover:bg-white/5"
+        >
+          Настройки бота
+        </Link>
 
         {needsRenewal && (
           <Link
             href={`/subscriptions/${sub.id}/pay`}
-            className="mt-6 block w-full rounded-full bg-accent px-6 py-3 text-center text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent/90"
+            className="mt-3 block w-full rounded-full bg-accent px-6 py-3 text-center text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent/90"
           >
             Продлить подписку
           </Link>

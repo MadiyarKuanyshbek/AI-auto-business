@@ -46,6 +46,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "invalid_id" }, { status: 400 });
   }
 
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    body = {};
+  }
+  const requestedMonths =
+    typeof body === "object" && body !== null && "periodMonths" in body
+      ? Number((body as { periodMonths: unknown }).periodMonths)
+      : 1;
+  // "Разовая оплата навсегда" технически — просто длинный период (см.
+  // ConfirmSubscriptionPaymentButton): сервер всё равно стоит денег каждый
+  // месяц, поэтому даже "навсегда" на практике означает предоплаченные годы.
+  const periodMonths = Number.isInteger(requestedMonths) && requestedMonths > 0 ? requestedMonths : 1;
+
   const [sub] = (await sql`SELECT * FROM subscriptions WHERE id = ${subId}`) as SubscriptionRow[];
   if (!sub) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -72,7 +87,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   await sql`
     UPDATE subscriptions
-    SET status = 'active', current_period_end = now() + interval '30 days',
+    SET status = 'active', current_period_end = now() + make_interval(months => ${periodMonths}),
         pairing_code = ${pairingCode ?? null}, updated_at = now()
     WHERE id = ${subId}
   `;

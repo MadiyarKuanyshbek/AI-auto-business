@@ -12,6 +12,7 @@ export default function PortalLoginForm() {
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
+  const [remember, setRemember] = useState(true);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState("");
 
@@ -55,7 +56,7 @@ export default function PortalLoginForm() {
       const response = await fetch("/api/portal/verify-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, code }),
+        body: JSON.stringify({ phone, code, remember }),
       });
       if (!response.ok) throw new Error("invalid_code");
       router.push("/portal");
@@ -86,6 +87,16 @@ export default function PortalLoginForm() {
             className="mt-1 w-full rounded-lg border border-border bg-white/5 px-4 py-2.5 text-center text-lg tracking-widest text-foreground outline-none focus:border-accent"
           />
         </div>
+
+        <label className="flex items-center gap-2 text-sm text-muted">
+          <input
+            type="checkbox"
+            checked={remember}
+            onChange={(e) => setRemember(e.target.checked)}
+            className="h-4 w-4 rounded border-border accent-accent"
+          />
+          Запомнить меня на этом устройстве (90 дней)
+        </label>
 
         {error && <p className="text-sm text-red-400">{error}</p>}
 

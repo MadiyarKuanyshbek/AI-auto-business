@@ -14,7 +14,7 @@ export default function PortalLogoutButton() {
       }}
       className="text-sm text-muted transition-colors hover:text-foreground"
     >
-      Выйти
+      Забыть меня
     </button>
   );
 }

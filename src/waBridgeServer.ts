@@ -1,5 +1,6 @@
 import http from 'node:http';
 import { getStatus, notifySelf, startBot, stopBot } from './waManager';
+import { setSystemPrompt } from './systemPrompts';
 
 // Служебный HTTP-мост между процессом сайта (web) и процессом демона
 // (wa-daemon) — они отдельные PM2-процессы, сокет WhatsApp живёт только тут.
@@ -36,7 +37,7 @@ export function startBridgeServer() {
       return;
     }
 
-    const match = req.url?.match(/^\/bots\/([^/]+)\/(start|stop|status|notify)$/);
+    const match = req.url?.match(/^\/bots\/([^/]+)\/(start|stop|status|notify|set-prompt)$/);
     if (!match) {
       res.writeHead(404);
       res.end(JSON.stringify({ error: 'not_found' }));
@@ -79,6 +80,15 @@ export function startBridgeServer() {
         const sent = await notifySelf(ownerId, text);
         res.writeHead(200);
         res.end(JSON.stringify({ ok: sent }));
+        return;
+      }
+
+      if (action === 'set-prompt' && req.method === 'POST') {
+        const body = await readBody(req);
+        const { text } = body ? JSON.parse(body) : {};
+        setSystemPrompt(ownerId, typeof text === 'string' ? text : null);
+        res.writeHead(200);
+        res.end(JSON.stringify({ ok: true }));
         return;
       }
 

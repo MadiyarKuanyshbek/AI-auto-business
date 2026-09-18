@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql, type SubscriptionRow } from "@/lib/db";
 import { normalizePhone } from "@/lib/phone";
-import { createPortalSessionToken, PORTAL_SESSION_TTL_MS } from "@/lib/portalAuth";
+import { createPortalSessionToken, PORTAL_REMEMBER_TTL_MS, PORTAL_SESSION_TTL_MS } from "@/lib/portalAuth";
 
 export async function POST(request: Request) {
   if (!sql) {
@@ -23,6 +23,7 @@ export async function POST(request: Request) {
   const record = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
   const phoneDigits = normalizePhone(typeof record.phone === "string" ? record.phone : "");
   const code = typeof record.code === "string" ? record.code.trim() : "";
+  const remember = Boolean(record.remember);
 
   if (!phoneDigits || !code) {
     return NextResponse.json({ error: "missing_fields" }, { status: 400 });
@@ -44,14 +45,15 @@ export async function POST(request: Request) {
 
   await sql`UPDATE subscriptions SET otp_code = NULL, otp_expires_at = NULL WHERE id = ${sub.id}`;
 
-  const token = await createPortalSessionToken(sub.id, secret);
+  const ttlMs = remember ? PORTAL_REMEMBER_TTL_MS : PORTAL_SESSION_TTL_MS;
+  const token = await createPortalSessionToken(sub.id, secret, ttlMs);
   const response = NextResponse.json({ ok: true });
   response.cookies.set("portal_session", token, {
     httpOnly: true,
     secure: true,
     sameSite: "lax",
     path: "/",
-    maxAge: PORTAL_SESSION_TTL_MS / 1000,
+    maxAge: ttlMs / 1000,
   });
   return response;
 }

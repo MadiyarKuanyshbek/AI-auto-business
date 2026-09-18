@@ -78,6 +78,7 @@ export type SubscriptionRow = {
   reminded_1d_at: string | null;
   otp_code: string | null;
   otp_expires_at: string | null;
+  system_prompt: string | null;
   created_at: string;
   updated_at: string;
 };

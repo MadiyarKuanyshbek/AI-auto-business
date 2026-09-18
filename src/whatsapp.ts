@@ -2,9 +2,7 @@ import makeWASocket, { DisconnectReason, fetchLatestBaileysVersion, useMultiFile
 import { isPersonalContact } from './contacts';
 import { generateAiReply } from './gemini';
 import { notifyOwner } from '../lib/telegram';
-
-const AI_SYSTEM_PROMPT =
-  'Ты — AI-администратор бизнеса в WhatsApp. Отвечай кратко, дружелюбно и по делу.';
+import { getSystemPrompt } from './systemPrompts';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -136,7 +134,7 @@ export async function initWhatsApp(ownerId: string, phoneNumber?: string) {
       }
 
       try {
-        const reply = await generateAiReply(AI_SYSTEM_PROMPT, text);
+        const reply = await generateAiReply(getSystemPrompt(ownerId), text);
         await sock.sendMessage(from, { text: reply });
       } catch (err) {
         console.error(`[owner ${ownerId}] failed to reply to ${from}:`, err);

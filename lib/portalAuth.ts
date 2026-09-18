@@ -24,10 +24,13 @@ function timingSafeEqual(a: string, b: string) {
   return result === 0;
 }
 
-export const PORTAL_SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 дней
+// "Запомнить меня" — сессия держится долго (как в админке). Без галочки —
+// только на время этой сессии браузера, разумно для чужого/общего устройства.
+export const PORTAL_REMEMBER_TTL_MS = 1000 * 60 * 60 * 24 * 90; // 90 дней
+export const PORTAL_SESSION_TTL_MS = 1000 * 60 * 60 * 12; // 12 часов
 
-export async function createPortalSessionToken(subscriptionId: number, secret: string) {
-  const expiry = Date.now() + PORTAL_SESSION_TTL_MS;
+export async function createPortalSessionToken(subscriptionId: number, secret: string, ttlMs: number) {
+  const expiry = Date.now() + ttlMs;
   const payload = `${subscriptionId}.${expiry}`;
   const key = await getKey(secret);
   const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));

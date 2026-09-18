@@ -132,6 +132,9 @@ async function main() {
   // подписку — новый запрос перезаписывает предыдущий.
   await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS otp_code TEXT`;
   await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMPTZ`;
+  // Свой текст инструкции для ИИ-бота клиента (тон, что отвечать) — настраивается
+  // в личном кабинете. NULL = используется общий текст по умолчанию.
+  await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS system_prompt TEXT`;
 
   // Журнал заявок на оплату ("я оплатил") — отдельно от subscriptions,
   // чтобы не терять историю, если платёж отклонят или будет продление.

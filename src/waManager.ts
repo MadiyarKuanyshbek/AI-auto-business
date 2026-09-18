@@ -1,5 +1,7 @@
 import type { WASocket } from '@whiskeysockets/baileys';
 import { initWhatsApp, markStopped } from './whatsapp';
+import { setSystemPrompt } from './systemPrompts';
+import { sql } from '../lib/db';
 
 type BotEntry = {
   sock: WASocket;
@@ -12,6 +14,19 @@ export type BotStatus = 'connected' | 'connecting' | 'not_started';
 /** Запускает бота для владельца (новая привязка, если передан номер) и
  * держит сокет в памяти демона, пока его явно не остановят. */
 export async function startBot(ownerId: string, phoneNumber?: string) {
+  // Подхватываем персональный промпт клиента из БД до первого сообщения —
+  // иначе первые чаты после рестарта демона отвечали бы дефолтным текстом.
+  if (sql) {
+    try {
+      const [row] = (await sql`SELECT system_prompt FROM subscriptions WHERE owner_id = ${ownerId}`) as {
+        system_prompt: string | null;
+      }[];
+      setSystemPrompt(ownerId, row?.system_prompt);
+    } catch (err) {
+      console.error(`[waManager] failed to load system prompt for owner ${ownerId}:`, err);
+    }
+  }
+
   const { sock, pairingCode } = await initWhatsApp(ownerId, phoneNumber);
   bots.set(ownerId, { sock });
   return { pairingCode };

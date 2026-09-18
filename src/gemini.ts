@@ -16,8 +16,11 @@ const BASE_DELAY_MS = 300;
 // preview-модель, у которой бесплатный тир урезан до 20 запросов/сутки на
 // проект (это и роняло бота в проде). Пришпиленные более старые версии дают
 // штатный, куда более щедрый бесплатный лимит — используем их вместо алиасов.
-const PRIMARY_MODEL = "gemini-3.5-flash";
-const FALLBACK_MODEL = "gemini-3.5-flash-lite";
+// Обе — "-lite": не "думающие" модели (нет thoughtsTokenCount), отвечают
+// заметно быстрее полной gemini-3.5-flash — это критично для сценария заказа,
+// где ответ должен укладываться в таймаут вебхука Telegram.
+const PRIMARY_MODEL = "gemini-3.5-flash-lite";
+const FALLBACK_MODEL = "gemini-3.1-flash-lite";
 
 const FALLBACK_REPLY = "Принял ваш запрос! Менеджер свяжется с вами в течение 2 минут.";
 

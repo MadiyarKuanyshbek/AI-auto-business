@@ -9,13 +9,13 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? "");
 let lastQuotaAlertAt = 0;
 const QUOTA_ALERT_THROTTLE_MS = 30 * 60 * 1000;
 
-function alertOwnerOnQuotaExhaustion(primaryErr: unknown, fallbackErr: unknown) {
-  if (!isDailyQuotaExhausted(primaryErr) && !isDailyQuotaExhausted(fallbackErr)) return;
+function alertOwnerOnQuotaExhaustion(errors: unknown[]) {
+  if (!errors.some(isDailyQuotaExhausted)) return;
   const now = Date.now();
   if (now - lastQuotaAlertAt < QUOTA_ALERT_THROTTLE_MS) return;
   lastQuotaAlertAt = now;
   void notifyOwner(
-    "🚨 Обе модели Gemini (основная и резервная) отказали подряд — похоже, кончилась бесплатная квота API на сегодня. Боты отвечают заглушкой вместо ИИ, пока квота не обновится или не подключите платный тир.",
+    `🚨 Все ${errors.length} модели Gemini в цепочке отказали подряд — похоже, кончилась бесплатная квота API на сегодня. Боты отвечают заглушкой вместо ИИ, пока квота не обновится или не подключите платный тир.`,
   );
 }
 
@@ -33,11 +33,13 @@ const BASE_DELAY_MS = 300;
 // preview-модель, у которой бесплатный тир урезан до 20 запросов/сутки на
 // проект (это и роняло бота в проде). Пришпиленные более старые версии дают
 // штатный, куда более щедрый бесплатный лимит — используем их вместо алиасов.
-// Обе — "-lite": не "думающие" модели (нет thoughtsTokenCount), отвечают
+// Первые две — "-lite": не "думающие" модели (нет thoughtsTokenCount), отвечают
 // заметно быстрее полной gemini-3.5-flash — это критично для сценария заказа,
-// где ответ должен укладываться в таймаут вебхука Telegram.
-const PRIMARY_MODEL = "gemini-3.5-flash-lite";
-const FALLBACK_MODEL = "gemini-3.1-flash-lite";
+// где ответ должен укладываться в таймаут вебхука Telegram. Три модели, а не
+// две — свою суточную квоту free tier считает каждая ОТДЕЛЬНО, так что если
+// у одной кончилась квота, у следующей в цепочке скорее всего ещё есть запас:
+// это самовосстановление без участия человека, а не просто более длинный лог.
+const MODEL_CHAIN = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3-flash-preview"];
 
 const FALLBACK_REPLY = "Принял ваш запрос! Менеджер свяжется с вами в течение 2 минут.";
 
@@ -75,43 +77,37 @@ async function tryModel(modelName: string, prompt: string, userMessage: string, 
   throw new Error("unreachable");
 }
 
-export async function generateAiReply(prompt: string, userMessage: string) {
-  try {
-    return await tryModel(PRIMARY_MODEL, prompt, userMessage, false);
-  } catch (primaryErr) {
-    console.error(`Primary model (${PRIMARY_MODEL}) failed, trying fallback:`, primaryErr);
+/** Идёт по цепочке моделей по порядку, возвращает первый успешный ответ.
+ * Если провалились все — алертит владельца (если это похоже на квоту) и
+ * возвращает null, а не бросает исключение — вызывающий код сам решает
+ * запасной вариант (заглушка для чата, "не понял" для разбора заказа). */
+async function tryModelChain(prompt: string, userMessage: string, json: boolean): Promise<string | null> {
+  const errors: unknown[] = [];
+  for (const modelName of MODEL_CHAIN) {
     try {
-      return await tryModel(FALLBACK_MODEL, prompt, userMessage, false);
-    } catch (fallbackErr) {
-      console.error(`Fallback model (${FALLBACK_MODEL}) also failed:`, fallbackErr);
-      alertOwnerOnQuotaExhaustion(primaryErr, fallbackErr);
-      return FALLBACK_REPLY;
+      return await tryModel(modelName, prompt, userMessage, json);
+    } catch (err) {
+      console.error(`Model ${modelName} failed:`, err);
+      errors.push(err);
     }
   }
+  alertOwnerOnQuotaExhaustion(errors);
+  return null;
+}
+
+export async function generateAiReply(prompt: string, userMessage: string) {
+  const reply = await tryModelChain(prompt, userMessage, false);
+  return reply ?? FALLBACK_REPLY;
 }
 
 /**
  * Для сценариев, где ответ должен быть строго структурированным (например,
  * разбор заказа по меню) — просим у Gemini чистый JSON и парсим его. При
- * сбое обеих моделей или невалидном JSON возвращаем null, а не догадки:
- * денежные суммы в заказе должен всегда считать код, а не ИИ.
+ * сбое всей цепочки моделей или невалидном JSON возвращаем null, а не
+ * догадки: денежные суммы в заказе должен всегда считать код, а не ИИ.
  */
 export async function generateJsonReply<T>(prompt: string, userMessage: string): Promise<T | null> {
-  const raw = await (async () => {
-    try {
-      return await tryModel(PRIMARY_MODEL, prompt, userMessage, true);
-    } catch (primaryErr) {
-      console.error(`Primary model (${PRIMARY_MODEL}) failed (json), trying fallback:`, primaryErr);
-      try {
-        return await tryModel(FALLBACK_MODEL, prompt, userMessage, true);
-      } catch (fallbackErr) {
-        console.error(`Fallback model (${FALLBACK_MODEL}) also failed (json):`, fallbackErr);
-        alertOwnerOnQuotaExhaustion(primaryErr, fallbackErr);
-        return null;
-      }
-    }
-  })();
-
+  const raw = await tryModelChain(prompt, userMessage, true);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as T;

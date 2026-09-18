@@ -12,8 +12,12 @@ const RETRYABLE_STATUS = new Set([429, 503]);
 const MAX_ATTEMPTS = 2;
 const BASE_DELAY_MS = 300;
 
-const PRIMARY_MODEL = "gemini-flash-latest";
-const FALLBACK_MODEL = "gemini-flash-lite-latest";
+// Псевдонимы "-latest" сейчас указывают на gemini-3.8-flash — самую новую
+// preview-модель, у которой бесплатный тир урезан до 20 запросов/сутки на
+// проект (это и роняло бота в проде). Пришпиленные более старые версии дают
+// штатный, куда более щедрый бесплатный лимит — используем их вместо алиасов.
+const PRIMARY_MODEL = "gemini-3.5-flash";
+const FALLBACK_MODEL = "gemini-3.5-flash-lite";
 
 const FALLBACK_REPLY = "Принял ваш запрос! Менеджер свяжется с вами в течение 2 минут.";
 

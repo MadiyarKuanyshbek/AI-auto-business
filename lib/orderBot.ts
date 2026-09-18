@@ -128,7 +128,9 @@ ${formatMenuText(menu)}
     generateJsonReply<Partial<ParsedOrder>>(prompt, userMessage),
     new Promise<Partial<ParsedOrder> | "TIMEOUT">((resolve) => setTimeout(() => resolve("TIMEOUT"), 25000)),
   ]);
-  console.log(`[orderBot] extractOrderItems took ${Date.now() - startedAt}ms, result: ${raw === "TIMEOUT" ? "TIMEOUT" : raw ? "ok" : "null"}`);
+  console.log(
+    `[orderBot] extractOrderItems took ${Date.now() - startedAt}ms, userMessage=${JSON.stringify(userMessage)}, raw=${JSON.stringify(raw)}`,
+  );
 
   if (raw === "TIMEOUT" || !raw) return null;
   // Модель иногда возвращает не совсем ту форму (например, без "items") —

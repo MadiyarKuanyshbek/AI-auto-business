@@ -353,13 +353,21 @@ export async function processOrderMessage(sub: SubscriptionRow, message: Incomin
   const t = T[order.language];
   const menu = sub.menu_items;
 
+  const closedNote = () =>
+    !isOpenNow(sub) && sub.opens_at && sub.closes_at
+      ? t.closedNotice(sub.opens_at.slice(0, 5), sub.closes_at.slice(0, 5))
+      : "";
+  const isMenuRequest = Boolean(text && matchesAny(lowerText, MENU_WORDS));
+
   if (isNew && !message.fileId) {
-    const closedPrefix =
-      !isOpenNow(sub) && sub.opens_at && sub.closes_at
-        ? t.closedNotice(sub.opens_at.slice(0, 5), sub.closes_at.slice(0, 5))
-        : "";
-    await reply(sub, message.chatId, closedPrefix + t.greeting());
-    if (!text || matchesAny(lowerText, MENU_WORDS)) return;
+    // Меню показываем сразу, а не только здороваемся и просим спросить ещё
+    // раз — если человек первым делом написал "меню", ему нужно меню, а не
+    // повторное приветствие. Часы работы (если закрыто) упомянутся один раз
+    // либо тут, либо в самом ответе с меню — не дублируем.
+    if (!isMenuRequest) {
+      await reply(sub, message.chatId, closedNote() + t.greeting());
+    }
+    if (!text) return;
   }
 
   if (text && matchesAny(lowerText, CANCEL_WORDS)) {
@@ -369,9 +377,11 @@ export async function processOrderMessage(sub: SubscriptionRow, message: Incomin
     return;
   }
 
-  if (text && matchesAny(lowerText, MENU_WORDS)) {
+  if (isMenuRequest) {
+    // Меню доступно в любое время, даже когда точка закрыта — клиент может
+    // посмотреть и оформить предзаказ, просто напоминаем про часы работы.
     await sendMenuPhotos(sub, message.chatId);
-    await reply(sub, message.chatId, t.menu(formatMenuText(menu)));
+    await reply(sub, message.chatId, closedNote() + t.menu(formatMenuText(menu)));
     return;
   }
 

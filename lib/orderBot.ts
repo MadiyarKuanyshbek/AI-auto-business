@@ -112,6 +112,8 @@ const T = {
       `Добавил в заказ:\n${cartText}\n\nИтого: ${total.toLocaleString("ru-RU")} ₸\n\nЕщё что-нибудь? Если всё — напишите «всё» или «оформляйте».`,
     unclearItem: (menuText: string) =>
       `Не нашёл такую позицию в меню 🤔 Вот что у нас есть:\n\n${menuText}\n\nНапишите название блюда точнее.`,
+    unclearNote: () =>
+      `\n\n⚠️ Часть сообщения не распознал как позицию меню (напитки и десерты бот пока не оформляет — их можно уточнить у Саиды при получении заказа). Если хотели добавить что-то ещё из основного меню — напишите /menu.`,
     emptyCartFinish: () => `Похоже, заказ пока пустой. Что будете заказывать?`,
     askDelivery: (cartText: string, total: number) =>
       `Ваш заказ:\n${cartText}\n\nИтого: ${total.toLocaleString("ru-RU")} ₸\n\nСамовывоз или доставка? Если доставка — сразу напишите адрес.`,
@@ -121,6 +123,8 @@ const T = {
     paymentAsk: (requisites: string) =>
       `Отлично! Прежде чем переведёте — напишите, пожалуйста, ваше имя (как оно указано в Kaspi-переводе, чтобы мы точно сверили оплату).\n\nЗатем переведите сумму на Kaspi:\n${requisites}\n\nЧек можно прислать сюда как скриншотом (фото), так и файлом — как удобнее.`,
     payerNameSaved: () => `Принял, спасибо! Жду чек — фото или файл.`,
+    paymentQuestionForwarded: () =>
+      `Передал ваше сообщение хозяйке, она ответит вам здесь же. А пока — жду чек об оплате, фото или файлом.`,
     paymentReminder: () => `Жду чек об оплате — пришлите его сюда фото или файлом.`,
     orderSent: () => `Спасибо! Заказ и чек отправлены — как только подтвердим оплату, начнём готовить. 🙏`,
     orderReadyPickup: () => `🎉 Ваш заказ готов! Можно забирать.`,
@@ -138,6 +142,8 @@ const T = {
       `Тапсырысқа қостым:\n${cartText}\n\nБарлығы: ${total.toLocaleString("ru-RU")} ₸\n\nТағы бірдеңе керек пе? Болса — «болды» немесе «рәсімдеңіз» деп жазыңыз.`,
     unclearItem: (menuText: string) =>
       `Мұндай тағамды мәзірден таппадым 🤔 Мәзір:\n\n${menuText}\n\nАтауын нақтырақ жазыңыз.`,
+    unclearNote: () =>
+      `\n\n⚠️ Хабарламаның бір бөлігін мәзір позициясы ретінде таба алмадым (сусындар мен десерттерді бот әзірге қабылдамайды — тапсырысты алғанда Саидадан сұрауға болады). Негізгі мәзірден тағы бірдеңе қосу керек болса — /menu жазыңыз.`,
     emptyCartFinish: () => `Тапсырыс әлі бос сияқты. Не тапсырасыз?`,
     askDelivery: (cartText: string, total: number) =>
       `Тапсырысыңыз:\n${cartText}\n\nБарлығы: ${total.toLocaleString("ru-RU")} ₸\n\nӨзіңіз алып кетесіз бе, әлде жеткізу керек пе? Жеткізу болса — мекенжайды жазыңыз.`,
@@ -147,6 +153,8 @@ const T = {
     paymentAsk: (requisites: string) =>
       `Тамаша! Аударым жасамас бұрын атыңызды жазыңыз (Kaspi аударымындағыдай — төлемді дәл салыстыру үшін).\n\nСодан кейін Kaspi-ға аударыңыз:\n${requisites}\n\nЧекті скриншот немесе файл түрінде жіберуге болады — қалай ыңғайлы, солай.`,
     payerNameSaved: () => `Қабылдадым, рахмет! Чекті күтемін — фото немесе файл.`,
+    paymentQuestionForwarded: () =>
+      `Хабарламаңызды қожайынға жеткіздім, осында жауап береді. Ал әзірге — төлем чегін күтемін, фото немесе файл түрінде.`,
     paymentReminder: () => `Төлем чегін күтіп тұрмын — осында фото немесе файл жіберіңіз.`,
     orderSent: () => `Рахмет! Тапсырыс пен чек жіберілді — төлем расталған соң дайындай бастаймыз. 🙏`,
     orderReadyPickup: () => `🎉 Тапсырысыңыз дайын! Алып кетуге болады.`,
@@ -309,24 +317,30 @@ export async function processOrderMessage(sub: SubscriptionRow, message: Incomin
     }
     const cartChanged = parsed.items.length > 0 || parsed.removeItems.length > 0;
 
+    // parsed.unclear значит, что часть сообщения не сопоставилась ни с одной
+    // позицией меню — это не должно тонуть молча, даже если другие позиции
+    // из того же сообщения добавились успешно (иначе клиент решит, что бот
+    // просто проигнорировал часть заказа, и узнает об этом только на кассе).
+    const unclearSuffix = parsed.unclear ? t.unclearNote() : "";
+
     if (parsed.finished) {
       if (order.items.length === 0) {
-        await reply(sub, message.chatId, t.emptyCartFinish());
+        await reply(sub, message.chatId, t.emptyCartFinish() + unclearSuffix);
         return;
       }
       order.state = "delivery";
       await saveOrder(order);
-      await reply(sub, message.chatId, t.askDelivery(formatCart(order.items), computeTotal(order.items)));
+      await reply(sub, message.chatId, t.askDelivery(formatCart(order.items), computeTotal(order.items)) + unclearSuffix);
       return;
     }
 
     if (cartChanged) {
       await saveOrder(order);
       if (order.items.length === 0) {
-        await reply(sub, message.chatId, t.emptyCartFinish());
+        await reply(sub, message.chatId, t.emptyCartFinish() + unclearSuffix);
         return;
       }
-      await reply(sub, message.chatId, t.itemsAdded(formatCart(order.items), computeTotal(order.items)));
+      await reply(sub, message.chatId, t.itemsAdded(formatCart(order.items), computeTotal(order.items)) + unclearSuffix);
       return;
     }
 
@@ -412,11 +426,28 @@ export async function processOrderMessage(sub: SubscriptionRow, message: Incomin
 
   if (order.state === "payment") {
     // Имя (для сверки с Kaspi-переводом) и чек могут прийти в любом порядке
-    // и отдельными сообщениями — принимаем оба независимо.
+    // и отдельными сообщениями — принимаем оба независимо. Но только ПЕРВОЕ
+    // текстовое сообщение здесь считаем именем: раньше любое следующее
+    // сообщение (вопрос, жалоба, уточнение) молча перезаписывало имя и в
+    // ответ уходило то же самое "принял, спасибо" — снаружи выглядело так,
+    // будто бот вообще не отвечает на вопросы. Теперь второй и далее текст
+    // без файла пересылаем владельцу как есть, а не притворяемся, что поняли.
     if (text && !message.fileId) {
-      order.payer_name = text;
-      await saveOrder(order);
-      await reply(sub, message.chatId, t.payerNameSaved());
+      if (!order.payer_name) {
+        order.payer_name = text;
+        await saveOrder(order);
+        await reply(sub, message.chatId, t.payerNameSaved());
+        return;
+      }
+
+      if (sub.telegram_owner_chat_id) {
+        await sendTelegramMessageAs(
+          sub.telegram_bot_token,
+          sub.telegram_owner_chat_id,
+          `💬 Сообщение от клиента по заказу (${sub.business_name}, чат ${message.chatId}):\n${text}`,
+        );
+      }
+      await reply(sub, message.chatId, t.paymentQuestionForwarded());
       return;
     }
 

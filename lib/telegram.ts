@@ -42,6 +42,37 @@ export async function sendTelegramMessageAs(
   }
 }
 
+/**
+ * Пересылает фото по file_id (без повторной загрузки — Telegram принимает
+ * file_id, выданный тем же ботом, в любом чате этого бота). Используется,
+ * чтобы переслать скриншот оплаты клиента владельцу бизнеса вместе с текстом заказа.
+ */
+export async function sendTelegramPhotoAs(
+  botToken: string,
+  chatId: number | string,
+  fileId: string,
+  caption: string,
+) {
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, photo: fileId, caption: caption.slice(0, 1024) }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Telegram sendPhoto failed (${response.status}): ${errorText}`);
+      return { ok: false as const };
+    }
+
+    return { ok: true as const };
+  } catch (error) {
+    console.error("Telegram sendPhoto request failed:", error instanceof Error ? error.message : error);
+    return { ok: false as const };
+  }
+}
+
 export async function sendTelegramMessage(
   chatId: number | string,
   text: string,

@@ -15,8 +15,11 @@ const FALLBACK_MODEL = "gemini-flash-lite-latest";
 
 const FALLBACK_REPLY = "Принял ваш запрос! Менеджер свяжется с вами в течение 2 минут.";
 
-async function tryModel(modelName: string, prompt: string, userMessage: string) {
-  const model = genAI.getGenerativeModel({ model: modelName });
+async function tryModel(modelName: string, prompt: string, userMessage: string, json: boolean) {
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    generationConfig: json ? { responseMimeType: "application/json" } : undefined,
+  });
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
@@ -40,14 +43,44 @@ async function tryModel(modelName: string, prompt: string, userMessage: string) 
 
 export async function generateAiReply(prompt: string, userMessage: string) {
   try {
-    return await tryModel(PRIMARY_MODEL, prompt, userMessage);
+    return await tryModel(PRIMARY_MODEL, prompt, userMessage, false);
   } catch (primaryErr) {
     console.error(`Primary model (${PRIMARY_MODEL}) failed, trying fallback:`, primaryErr);
     try {
-      return await tryModel(FALLBACK_MODEL, prompt, userMessage);
+      return await tryModel(FALLBACK_MODEL, prompt, userMessage, false);
     } catch (fallbackErr) {
       console.error(`Fallback model (${FALLBACK_MODEL}) also failed:`, fallbackErr);
       return FALLBACK_REPLY;
     }
+  }
+}
+
+/**
+ * Для сценариев, где ответ должен быть строго структурированным (например,
+ * разбор заказа по меню) — просим у Gemini чистый JSON и парсим его. При
+ * сбое обеих моделей или невалидном JSON возвращаем null, а не догадки:
+ * денежные суммы в заказе должен всегда считать код, а не ИИ.
+ */
+export async function generateJsonReply<T>(prompt: string, userMessage: string): Promise<T | null> {
+  const raw = await (async () => {
+    try {
+      return await tryModel(PRIMARY_MODEL, prompt, userMessage, true);
+    } catch (primaryErr) {
+      console.error(`Primary model (${PRIMARY_MODEL}) failed (json), trying fallback:`, primaryErr);
+      try {
+        return await tryModel(FALLBACK_MODEL, prompt, userMessage, true);
+      } catch (fallbackErr) {
+        console.error(`Fallback model (${FALLBACK_MODEL}) also failed (json):`, fallbackErr);
+        return null;
+      }
+    }
+  })();
+
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch (err) {
+    console.error("Failed to parse Gemini JSON response:", err, raw);
+    return null;
   }
 }

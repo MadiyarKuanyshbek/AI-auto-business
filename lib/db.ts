@@ -62,6 +62,11 @@ export type BusinessRow = {
 export type SubscriptionStatus = "pending_payment" | "active" | "expired" | "cancelled";
 export type SubscriptionChannel = "whatsapp" | "telegram";
 
+export type MenuItem = {
+  name: string;
+  price: number;
+};
+
 export type SubscriptionRow = {
   id: number;
   owner_id: string;
@@ -85,6 +90,8 @@ export type SubscriptionRow = {
   telegram_bot_username: string | null;
   telegram_webhook_secret: string | null;
   telegram_owner_chat_id: number | null;
+  menu_items: MenuItem[] | null;
+  kaspi_requisites: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -97,4 +104,30 @@ export type SubscriptionPaymentRow = {
   status: SubscriptionPaymentStatus;
   claimed_at: string;
   confirmed_at: string | null;
+};
+
+export type OrderState = "collecting" | "delivery" | "address" | "confirm" | "payment" | "sent" | "cancelled";
+export type OrderLanguage = "ru" | "kz";
+export type DeliveryType = "pickup" | "delivery";
+
+export type OrderItem = {
+  name: string;
+  price: number;
+  qty: number;
+};
+
+export type TelegramOrderRow = {
+  id: number;
+  subscription_id: number;
+  customer_chat_id: number;
+  customer_name: string | null;
+  language: OrderLanguage;
+  state: OrderState;
+  items: OrderItem[];
+  delivery_type: DeliveryType | null;
+  address: string | null;
+  total_kzt: number | null;
+  payment_file_id: string | null;
+  created_at: string;
+  updated_at: string;
 };

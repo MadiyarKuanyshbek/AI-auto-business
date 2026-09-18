@@ -160,7 +160,44 @@ async function main() {
     ON subscription_payments (subscription_id)
   `;
 
-  console.log("Готово: таблицы leads, businesses, group_leads, telegram_sessions, system_status, subscriptions, subscription_payments существуют и обновлены.");
+  // Меню клиента (пункт + цена в тенге) — если задано, бот ведёт клиента по
+  // пошаговому сценарию заказа (считает сумму сам, не доверяя арифметику ИИ),
+  // а не просто свободно болтает по system_prompt.
+  await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS menu_items JSONB`;
+  // Реквизиты для оплаты именно этого клиента (не агентства) — показываются
+  // в сценарии заказа на шаге оплаты.
+  await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS kaspi_requisites TEXT`;
+
+  // Заказы, которые ведёт бот клиента пошагово: сбор позиций → самовывоз/адрес
+  // → подтверждение → ожидание скрина оплаты → пересылка владельцу. Состояние
+  // живёт в БД, а не в памяти процесса — серверлес-функция не хранит контекст
+  // между вызовами вебхука.
+  await sql`
+    CREATE TABLE IF NOT EXISTS telegram_orders (
+      id SERIAL PRIMARY KEY,
+      subscription_id INTEGER NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
+      customer_chat_id BIGINT NOT NULL,
+      customer_name TEXT,
+      language TEXT NOT NULL DEFAULT 'ru',
+      state TEXT NOT NULL DEFAULT 'collecting',
+      items JSONB NOT NULL DEFAULT '[]',
+      delivery_type TEXT,
+      address TEXT,
+      total_kzt INTEGER,
+      payment_file_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  // Быстро найти активный (незавершённый) заказ конкретного клиента у
+  // конкретного бота — на диалог должен быть максимум один открытый заказ.
+  await sql`
+    CREATE INDEX IF NOT EXISTS telegram_orders_active_idx
+    ON telegram_orders (subscription_id, customer_chat_id)
+    WHERE state NOT IN ('sent', 'cancelled')
+  `;
+
+  console.log("Готово: таблицы leads, businesses, group_leads, telegram_sessions, system_status, subscriptions, subscription_payments, telegram_orders существуют и обновлены.");
 }
 
 main().catch((error) => {

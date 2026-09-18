@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sql, type SubscriptionRow } from "@/lib/db";
 import { sendTelegramMessageAs } from "@/lib/telegramClientBot";
 import { generateAiReply } from "@/src/gemini";
+import { processOrderMessage } from "@/lib/orderBot";
 
 // generateAiReply умеет ретраить до 5 раз на 2 модели — в худшем случае это
 // может растянуться дольше, чем Telegram готов ждать ответ вебхука (видели
@@ -27,7 +28,8 @@ type TelegramUpdate = {
   message?: {
     text?: string;
     chat: { id: number };
-    from?: { id: number };
+    from?: { id: number; first_name?: string; username?: string };
+    photo?: { file_id: string; width: number; height: number }[];
   };
 };
 
@@ -55,28 +57,38 @@ export async function POST(request: Request, { params }: { params: Promise<{ own
   }
 
   const message = update.message;
-  const text = message?.text;
   const chatId = message?.chat.id;
   const fromId = message?.from?.id;
-  if (!text || chatId === undefined) {
+  const text = message?.text;
+  const photoFileId = message?.photo?.length ? message.photo[message.photo.length - 1].file_id : undefined;
+  if (chatId === undefined || (!text && !photoFileId)) {
     return NextResponse.json({ ok: true });
   }
 
   // Диплинк-привязка личного Telegram-аккаунта владельца бизнеса (для OTP
   // личного кабинета) — t.me/<bot>?start=link_<ownerId>, см. /register.
-  if (text.startsWith("/start link_")) {
+  if (text?.startsWith("/start link_")) {
     await sql`UPDATE subscriptions SET telegram_owner_chat_id = ${fromId ?? chatId} WHERE id = ${sub.id}`;
     await sendTelegramMessageAs(
       sub.telegram_bot_token,
       chatId,
-      "Готово! Теперь коды входа в личный кабинет будут приходить сюда.",
+      "Готово! Теперь заказы и коды входа в личный кабинет будут приходить сюда.",
     );
     return NextResponse.json({ ok: true });
   }
 
   try {
-    const reply = await generateAiReplyWithTimeout(sub.system_prompt || DEFAULT_SYSTEM_PROMPT, text);
-    await sendTelegramMessageAs(sub.telegram_bot_token, chatId, reply);
+    if (sub.menu_items && sub.menu_items.length > 0) {
+      // Есть меню — ведём пошаговый сценарий заказа (считает код, а не ИИ),
+      // а не просто свободный чат.
+      const customerName = [message?.from?.first_name, message?.from?.username ? `@${message.from.username}` : null]
+        .filter(Boolean)
+        .join(" ");
+      await processOrderMessage(sub, { text, photoFileId, chatId, customerName: customerName || null });
+    } else if (text) {
+      const reply = await generateAiReplyWithTimeout(sub.system_prompt || DEFAULT_SYSTEM_PROMPT, text);
+      await sendTelegramMessageAs(sub.telegram_bot_token, chatId, reply);
+    }
   } catch (err) {
     console.error(`[telegram client ${ownerId}] failed to reply:`, err);
   }

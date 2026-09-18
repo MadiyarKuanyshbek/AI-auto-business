@@ -34,16 +34,19 @@ export default function PortalLoginForm() {
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data.error === "bot_offline" ? "bot_offline" : "request_failed");
+        throw new Error(data.error === "bot_offline" || data.error === "telegram_not_linked" ? data.error : "request_failed");
       }
       setStatus("idle");
       setStep("code");
     } catch (err) {
       setStatus("error");
+      const code = err instanceof Error ? err.message : "";
       setError(
-        err instanceof Error && err.message === "bot_offline"
+        code === "bot_offline"
           ? "Бот сейчас не в сети, код отправить не удалось. Попробуйте чуть позже."
-          : "Не получилось отправить код. Проверьте номер и попробуйте ещё раз.",
+          : code === "telegram_not_linked"
+            ? "Сначала привяжите Telegram-аккаунт — откройте своего бота и нажмите «Start» по ссылке со страницы подключения."
+            : "Не получилось отправить код. Проверьте номер и попробуйте ещё раз.",
       );
     }
   }

@@ -2,6 +2,7 @@ import { sql, type LeadRow, type SubscriptionRow } from "@/lib/db";
 import { products } from "@/lib/products";
 import LeadStatusSelect from "@/components/admin/LeadStatusSelect";
 import ConfirmSubscriptionPaymentButton from "@/components/admin/ConfirmSubscriptionPaymentButton";
+import ChannelBadge from "@/components/admin/ChannelBadge";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,7 @@ export default async function AdminInboxPage() {
               <tr>
                 <th className="px-4 py-2 font-medium">Бизнес</th>
                 <th className="px-4 py-2 font-medium">Продукт</th>
+                <th className="px-4 py-2 font-medium">Канал</th>
                 <th className="px-4 py-2 font-medium">Цена</th>
                 <th className="px-4 py-2 font-medium">Контакт</th>
                 <th className="px-4 py-2 font-medium">Действие</th>
@@ -61,6 +63,9 @@ export default async function AdminInboxPage() {
                   <td className="px-4 py-2">
                     {products.find((p) => p.id === sub.product_id)?.title ?? sub.product_id}
                   </td>
+                  <td className="px-4 py-2">
+                    <ChannelBadge channel={sub.channel} />
+                  </td>
                   <td className="px-4 py-2">{sub.price_kzt.toLocaleString("ru-RU")} ₸</td>
                   <td className="px-4 py-2">
                     {sub.contact_name}, {sub.contact_phone}
@@ -72,7 +77,7 @@ export default async function AdminInboxPage() {
               ))}
               {pendingSubscriptions.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-zinc-500">
+                  <td colSpan={6} className="px-4 py-6 text-center text-zinc-500">
                     Пока пусто
                   </td>
                 </tr>

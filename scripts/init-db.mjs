@@ -136,6 +136,14 @@ async function main() {
   // в личном кабинете. NULL = используется общий текст по умолчанию.
   await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS system_prompt TEXT`;
 
+  // Канал бота: 'whatsapp' (платно, держит сокет 24/7, требует VPS) или
+  // 'telegram' (бесплатно — вебхук поверх HTTP, работает на serverless).
+  await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS channel TEXT NOT NULL DEFAULT 'whatsapp'`;
+  await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS telegram_bot_token TEXT`;
+  await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS telegram_bot_username TEXT`;
+  await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS telegram_webhook_secret TEXT`;
+  await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS telegram_owner_chat_id BIGINT`;
+
   // Журнал заявок на оплату ("я оплатил") — отдельно от subscriptions,
   // чтобы не терять историю, если платёж отклонят или будет продление.
   await sql`

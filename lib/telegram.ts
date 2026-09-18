@@ -5,15 +5,17 @@ export type InlineKeyboard = Array<Array<{ text: string; callback_data: string }
  * ронять весь запрос (например, обработку вебхука или сохранение заявки на
  * сайте), если у получателя временный сбой, он заблокировал бота и т.п.
  * Ошибка логируется и возвращается в результате, а не пробрасывается выше.
+ *
+ * Параметризована токеном — тот же вызов используется и для агентского
+ * бота (sendTelegramMessage ниже, токен из env), и для ботов клиентов
+ * (свой токен на каждую Telegram-подписку, см. lib/telegramClientBot.ts).
  */
-export async function sendTelegramMessage(
+export async function sendTelegramMessageAs(
+  botToken: string,
   chatId: number | string,
   text: string,
   options?: { html?: boolean; keyboard?: InlineKeyboard },
 ) {
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  if (!botToken) return { skipped: true, ok: false as const };
-
   try {
     const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: "POST",
@@ -38,6 +40,16 @@ export async function sendTelegramMessage(
     console.error("Telegram sendMessage request failed:", error instanceof Error ? error.message : error);
     return { skipped: false, ok: false as const };
   }
+}
+
+export async function sendTelegramMessage(
+  chatId: number | string,
+  text: string,
+  options?: { html?: boolean; keyboard?: InlineKeyboard },
+) {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  if (!botToken) return { skipped: true, ok: false as const };
+  return sendTelegramMessageAs(botToken, chatId, text, options);
 }
 
 export type InlineQueryResult = {

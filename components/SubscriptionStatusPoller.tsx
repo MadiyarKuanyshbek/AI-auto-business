@@ -3,11 +3,16 @@
 import { useEffect, useState } from "react";
 
 type Status = "pending_payment" | "active" | "expired" | "cancelled";
+type Channel = "whatsapp" | "telegram";
 
 type StatusResponse = {
   status: Status;
   pairingCode: string | null;
   currentPeriodEnd: string | null;
+  channel: Channel;
+  telegramBotUsername: string | null;
+  telegramLinked: boolean;
+  telegramDeepLink: string | null;
 };
 
 export default function SubscriptionStatusPoller({
@@ -20,8 +25,10 @@ export default function SubscriptionStatusPoller({
   const [data, setData] = useState(initial);
 
   useEffect(() => {
-    if (data.status !== "pending_payment" && data.status !== "active") return;
-    if (data.status === "active" && data.pairingCode) return; // код уже есть, дальше опрашивать незачем
+    const stillWaitingPairingCode = data.channel === "whatsapp" && data.status === "active" && !data.pairingCode;
+    const stillWaitingTelegramLink = data.channel === "telegram" && data.status === "active" && !data.telegramLinked;
+    const shouldPoll = data.status === "pending_payment" || stillWaitingPairingCode || stillWaitingTelegramLink;
+    if (!shouldPoll) return;
 
     const interval = setInterval(async () => {
       try {
@@ -35,7 +42,7 @@ export default function SubscriptionStatusPoller({
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [subscriptionId, data.status, data.pairingCode]);
+  }, [subscriptionId, data.status, data.pairingCode, data.channel, data.telegramLinked]);
 
   if (data.status === "pending_payment") {
     return (
@@ -46,7 +53,7 @@ export default function SubscriptionStatusPoller({
     );
   }
 
-  if (data.status === "active" && data.pairingCode) {
+  if (data.status === "active" && data.channel === "whatsapp" && data.pairingCode) {
     return (
       <div className="rounded-2xl border border-accent/30 bg-accent/10 p-6 text-center">
         <p className="font-medium">Оплата подтверждена! Подключите WhatsApp</p>
@@ -56,6 +63,35 @@ export default function SubscriptionStatusPoller({
           <li>2. «Привязать устройство» → «Привязать по номеру телефона»</li>
           <li>3. Введите код выше</li>
         </ol>
+      </div>
+    );
+  }
+
+  if (data.status === "active" && data.channel === "telegram") {
+    if (data.telegramLinked) {
+      return (
+        <div className="rounded-2xl border border-accent/30 bg-accent/10 p-6 text-center">
+          <p className="font-medium">Готово! Бот @{data.telegramBotUsername} подключён и работает.</p>
+          <p className="mt-2 text-sm text-muted">Напишите ему что-нибудь от другого аккаунта, чтобы проверить.</p>
+        </div>
+      );
+    }
+    return (
+      <div className="rounded-2xl border border-accent/30 bg-accent/10 p-6 text-center">
+        <p className="font-medium">Бот создан — осталось привязать ваш Telegram</p>
+        <p className="mt-2 text-sm text-muted">
+          Чтобы коды входа в личный кабинет приходили вам, перейдите в бота и нажмите «Start».
+        </p>
+        {data.telegramDeepLink && (
+          <a
+            href={data.telegramDeepLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 inline-block rounded-full bg-accent px-6 py-3 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent/90"
+          >
+            Открыть @{data.telegramBotUsername} →
+          </a>
+        )}
       </div>
     );
   }

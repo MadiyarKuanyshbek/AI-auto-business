@@ -1,3 +1,4 @@
+import Link from "next/link";
 import TelegramButton from "./TelegramButton";
 import WhatsAppButton from "./WhatsAppButton";
 
@@ -25,6 +26,12 @@ export default function Header() {
           ))}
         </nav>
         <div className="flex items-center gap-3">
+          <Link
+            href="/portal/login"
+            className="hidden text-sm font-medium text-muted transition-colors hover:text-foreground sm:block"
+          >
+            Личный кабинет
+          </Link>
           <div className="hidden items-center gap-3 sm:flex">
             <WhatsAppButton />
             <TelegramButton />

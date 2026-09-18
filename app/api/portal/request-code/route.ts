@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql, type SubscriptionRow } from "@/lib/db";
 import { normalizePhone } from "@/lib/phone";
+import { sendTelegramMessageAs } from "@/lib/telegramClientBot";
 
 async function notifyViaBridge(ownerId: string, text: string) {
   const bridgeUrl = process.env.WA_BRIDGE_URL ?? "http://127.0.0.1:4001";
@@ -16,6 +17,14 @@ async function notifyViaBridge(ownerId: string, text: string) {
   if (!response.ok) throw new Error(`bridge responded ${response.status}`);
   const body = (await response.json()) as { ok: boolean };
   return body.ok;
+}
+
+/** Для Telegram-подписок демон не нужен — просто шлём сообщение напрямую
+ * ботом клиента его же владельцу (chat_id привязан диплинком при подключении). */
+async function notifyViaTelegram(sub: SubscriptionRow, text: string) {
+  if (!sub.telegram_bot_token || !sub.telegram_owner_chat_id) return false;
+  const result = await sendTelegramMessageAs(sub.telegram_bot_token, sub.telegram_owner_chat_id, text);
+  return result.ok;
 }
 
 function generateCode() {
@@ -57,8 +66,21 @@ export async function POST(request: Request) {
     WHERE id = ${sub.id}
   `;
 
+  const text = `Код для входа в личный кабинет: ${code}\nДействует 5 минут.`;
+
+  if (sub.channel === "telegram") {
+    if (!sub.telegram_owner_chat_id) {
+      return NextResponse.json({ error: "telegram_not_linked" }, { status: 409 });
+    }
+    const sent = await notifyViaTelegram(sub, text);
+    if (!sent) {
+      return NextResponse.json({ error: "bot_offline" }, { status: 502 });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   try {
-    const sent = await notifyViaBridge(sub.owner_id, `Код для входа в личный кабинет: ${code}\nДействует 5 минут.`);
+    const sent = await notifyViaBridge(sub.owner_id, text);
     if (!sent) {
       return NextResponse.json({ error: "bot_offline" }, { status: 502 });
     }

@@ -61,7 +61,12 @@ export async function POST(request: Request) {
   const systemPrompt = raw.trim().slice(0, 2000) || null;
 
   await sql`UPDATE subscriptions SET system_prompt = ${systemPrompt}, updated_at = now() WHERE id = ${sub.id}`;
-  await pushPromptToBridge(sub.owner_id, systemPrompt ?? "");
+
+  // Telegram-вебхук читает system_prompt из БД на каждое сообщение — моста
+  // не нужно. Только у WhatsApp промпт кэшируется в памяти демона (VPS).
+  if (sub.channel === "whatsapp") {
+    await pushPromptToBridge(sub.owner_id, systemPrompt ?? "");
+  }
 
   return NextResponse.json({ ok: true });
 }

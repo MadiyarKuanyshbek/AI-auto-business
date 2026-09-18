@@ -1,6 +1,7 @@
 import { sql, type LeadRow, type SubscriptionRow } from "@/lib/db";
 import { products } from "@/lib/products";
 import LeadStatusSelect from "@/components/admin/LeadStatusSelect";
+import ChannelBadge from "@/components/admin/ChannelBadge";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,7 @@ export default async function AdminAcceptedPage() {
               <tr>
                 <th className="px-4 py-2 font-medium">Бизнес</th>
                 <th className="px-4 py-2 font-medium">Продукт</th>
+                <th className="px-4 py-2 font-medium">Канал</th>
                 <th className="px-4 py-2 font-medium">Статус</th>
                 <th className="px-4 py-2 font-medium">До</th>
                 <th className="px-4 py-2 font-medium">Контакт</th>
@@ -64,6 +66,9 @@ export default async function AdminAcceptedPage() {
                   <td className="px-4 py-2">{sub.business_name}</td>
                   <td className="px-4 py-2">
                     {products.find((p) => p.id === sub.product_id)?.title ?? sub.product_id}
+                  </td>
+                  <td className="px-4 py-2">
+                    <ChannelBadge channel={sub.channel} />
                   </td>
                   <td className="px-4 py-2">
                     <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLES[sub.status] ?? ""}`}>
@@ -80,7 +85,7 @@ export default async function AdminAcceptedPage() {
               ))}
               {subscriptions.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-zinc-500">
+                  <td colSpan={6} className="px-4 py-6 text-center text-zinc-500">
                     Пока пусто
                   </td>
                 </tr>

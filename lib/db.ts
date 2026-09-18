@@ -60,6 +60,7 @@ export type BusinessRow = {
 };
 
 export type SubscriptionStatus = "pending_payment" | "active" | "expired" | "cancelled";
+export type SubscriptionChannel = "whatsapp" | "telegram";
 
 export type SubscriptionRow = {
   id: number;
@@ -79,6 +80,11 @@ export type SubscriptionRow = {
   otp_code: string | null;
   otp_expires_at: string | null;
   system_prompt: string | null;
+  channel: SubscriptionChannel;
+  telegram_bot_token: string | null;
+  telegram_bot_username: string | null;
+  telegram_webhook_secret: string | null;
+  telegram_owner_chat_id: number | null;
   created_at: string;
   updated_at: string;
 };

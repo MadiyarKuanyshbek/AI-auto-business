@@ -25,16 +25,8 @@ export default async function RegisterPage({ params }: { params: Promise<{ produ
         </h1>
         <p className="mt-2 text-sm text-muted">{product.description}</p>
 
-        <div className="mt-4 rounded-2xl border border-border bg-white/5 p-4">
-          <p className="text-sm text-muted">Ежемесячная подписка</p>
-          <p className="text-xl font-semibold">{price.toLocaleString("ru-RU")} ₸ / мес</p>
-          <p className="mt-1 text-xs text-muted">
-            Бот работает 24/7, пока подписка активна. Оплата — переводом на Kaspi, подтверждаем вручную.
-          </p>
-        </div>
-
         <div className="mt-8">
-          <SubscriptionRegisterForm productId={product.id} />
+          <SubscriptionRegisterForm productId={product.id} price={price} />
         </div>
       </div>
     </div>

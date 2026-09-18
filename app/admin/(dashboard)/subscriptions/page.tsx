@@ -1,6 +1,7 @@
 import { sql, type SubscriptionRow } from "@/lib/db";
 import { products } from "@/lib/products";
 import ConfirmSubscriptionPaymentButton from "@/components/admin/ConfirmSubscriptionPaymentButton";
+import ChannelBadge from "@/components/admin/ChannelBadge";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,7 @@ export default async function AdminSubscriptionsPage() {
             <tr>
               <th className="px-4 py-2">Бизнес</th>
               <th className="px-4 py-2">Продукт</th>
+              <th className="px-4 py-2">Канал</th>
               <th className="px-4 py-2">Цена</th>
               <th className="px-4 py-2">Статус</th>
               <th className="px-4 py-2">До</th>
@@ -57,7 +59,7 @@ export default async function AdminSubscriptionsPage() {
           <tbody>
             {subscriptions.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-zinc-500">
+                <td colSpan={8} className="px-4 py-6 text-center text-zinc-500">
                   Подписок пока нет
                 </td>
               </tr>
@@ -66,6 +68,9 @@ export default async function AdminSubscriptionsPage() {
               <tr key={sub.id} className="border-t border-black/5 dark:border-white/5">
                 <td className="px-4 py-2 font-medium">{sub.business_name}</td>
                 <td className="px-4 py-2">{products.find((p) => p.id === sub.product_id)?.title ?? sub.product_id}</td>
+                <td className="px-4 py-2">
+                  <ChannelBadge channel={sub.channel} />
+                </td>
                 <td className="px-4 py-2">{sub.price_kzt.toLocaleString("ru-RU")} ₸</td>
                 <td className="px-4 py-2">
                   <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLES[sub.status] ?? ""}`}>

@@ -32,6 +32,14 @@ type TelegramUpdate = {
     from?: { id: number; first_name?: string; username?: string };
     photo?: { file_id: string; width: number; height: number }[];
     document?: { file_id: string; mime_type?: string };
+    voice?: unknown;
+    video_note?: unknown;
+    video?: unknown;
+    sticker?: unknown;
+    animation?: unknown;
+    location?: unknown;
+    contact?: unknown;
+    poll?: unknown;
   };
   callback_query?: {
     id: string;
@@ -39,6 +47,22 @@ type TelegramUpdate = {
     from: { id: number };
   };
 };
+
+// Голос/стикер/видео/геолокация и т.п. — форматы, которые бот не разбирает.
+// Раньше на них не отвечали вообще: тишина выглядит так, будто бот сломался,
+// хотя на самом деле он просто не умеет читать этот тип сообщения.
+function unsupportedKind(message: TelegramUpdate["message"]): string | null {
+  if (!message) return null;
+  if (message.voice) return "голосовые сообщения";
+  if (message.video_note) return "видеосообщения (кружки)";
+  if (message.video) return "видео";
+  if (message.sticker) return "стикеры";
+  if (message.animation) return "гифки";
+  if (message.location) return "геолокацию";
+  if (message.contact) return "контакты";
+  if (message.poll) return "опросы";
+  return null;
+}
 
 export async function POST(request: Request, { params }: { params: Promise<{ ownerId: string }> }) {
   if (!sql) {
@@ -85,7 +109,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ own
   const documentFileId = message?.document?.file_id;
   const fileId = photoFileId ?? documentFileId;
   const fileKind: "photo" | "document" | undefined = photoFileId ? "photo" : documentFileId ? "document" : undefined;
-  if (chatId === undefined || (!text && !fileId)) {
+  if (chatId === undefined) {
+    return NextResponse.json({ ok: true });
+  }
+
+  if (!text && !fileId) {
+    const kind = unsupportedKind(message);
+    if (kind) {
+      await sendTelegramMessageAs(
+        sub.telegram_bot_token,
+        chatId,
+        `Извините, ${kind} пока не понимаю 🙏 Напишите, пожалуйста, текстом, что хотите заказать.`,
+      );
+    }
     return NextResponse.json({ ok: true });
   }
 

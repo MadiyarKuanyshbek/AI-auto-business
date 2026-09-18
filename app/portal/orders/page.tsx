@@ -12,7 +12,8 @@ const STATE_LABELS: Record<string, string> = {
   address: "Вводит адрес",
   confirm: "Подтверждает",
   payment: "Ждём оплату",
-  sent: "Оформлен",
+  sent: "Ждёт готовности",
+  ready: "Готов",
   cancelled: "Отменён",
 };
 
@@ -22,7 +23,8 @@ const STATE_STYLES: Record<string, string> = {
   address: "bg-amber-500/15 text-amber-400",
   confirm: "bg-amber-500/15 text-amber-400",
   payment: "bg-blue-500/15 text-blue-400",
-  sent: "bg-emerald-500/15 text-emerald-400",
+  sent: "bg-blue-500/15 text-blue-400",
+  ready: "bg-emerald-500/15 text-emerald-400",
   cancelled: "bg-zinc-500/15 text-zinc-400",
 };
 

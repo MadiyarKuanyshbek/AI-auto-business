@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { sql, type SubscriptionRow } from "@/lib/db";
-import { sendTelegramMessageAs } from "@/lib/telegramClientBot";
+import { sendTelegramMessageAs, answerCallbackQueryAs } from "@/lib/telegram";
 import { generateAiReply } from "@/src/gemini";
-import { processOrderMessage } from "@/lib/orderBot";
+import { processOrderMessage, handleOwnerCallback } from "@/lib/orderBot";
 
 // generateAiReply умеет ретраить до 5 раз на 2 модели — в худшем случае это
 // может растянуться дольше, чем Telegram готов ждать ответ вебхука (видели
@@ -27,9 +27,16 @@ async function generateAiReplyWithTimeout(prompt: string, text: string): Promise
 type TelegramUpdate = {
   message?: {
     text?: string;
+    caption?: string;
     chat: { id: number };
     from?: { id: number; first_name?: string; username?: string };
     photo?: { file_id: string; width: number; height: number }[];
+    document?: { file_id: string; mime_type?: string };
+  };
+  callback_query?: {
+    id: string;
+    data?: string;
+    from: { id: number };
   };
 };
 
@@ -56,12 +63,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ own
     return NextResponse.json({ ok: true });
   }
 
+  // Нажатие inline-кнопки под уведомлением о заказе (например, владелец
+  // отмечает "Заказ готов") — отдельный тип апдейта, не "message".
+  if (update.callback_query) {
+    const cb = update.callback_query;
+    try {
+      const resultText = await handleOwnerCallback(sub, cb.data ?? "");
+      await answerCallbackQueryAs(sub.telegram_bot_token, cb.id, resultText);
+    } catch (err) {
+      console.error(`[telegram client ${ownerId}] callback failed:`, err);
+      await answerCallbackQueryAs(sub.telegram_bot_token, cb.id, "Не получилось, попробуйте ещё раз");
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   const message = update.message;
   const chatId = message?.chat.id;
   const fromId = message?.from?.id;
-  const text = message?.text;
+  const text = message?.text ?? message?.caption;
   const photoFileId = message?.photo?.length ? message.photo[message.photo.length - 1].file_id : undefined;
-  if (chatId === undefined || (!text && !photoFileId)) {
+  const documentFileId = message?.document?.file_id;
+  const fileId = photoFileId ?? documentFileId;
+  const fileKind: "photo" | "document" | undefined = photoFileId ? "photo" : documentFileId ? "document" : undefined;
+  if (chatId === undefined || (!text && !fileId)) {
     return NextResponse.json({ ok: true });
   }
 
@@ -84,7 +108,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ own
       const customerName = [message?.from?.first_name, message?.from?.username ? `@${message.from.username}` : null]
         .filter(Boolean)
         .join(" ");
-      await processOrderMessage(sub, { text, photoFileId, chatId, customerName: customerName || null });
+      await processOrderMessage(sub, { text, fileId, fileKind, chatId, customerName: customerName || null });
     } else if (text) {
       const reply = await generateAiReplyWithTimeout(sub.system_prompt || DEFAULT_SYSTEM_PROMPT, text);
       await sendTelegramMessageAs(sub.telegram_bot_token, chatId, reply);

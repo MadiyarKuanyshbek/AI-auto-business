@@ -108,9 +108,10 @@ export type SubscriptionPaymentRow = {
   confirmed_at: string | null;
 };
 
-export type OrderState = "collecting" | "delivery" | "address" | "confirm" | "payment" | "sent" | "cancelled";
+export type OrderState = "collecting" | "delivery" | "address" | "confirm" | "payment" | "sent" | "ready" | "cancelled";
 export type OrderLanguage = "ru" | "kz";
 export type DeliveryType = "pickup" | "delivery";
+export type PaymentFileKind = "photo" | "document";
 
 export type OrderItem = {
   name: string;
@@ -130,6 +131,8 @@ export type TelegramOrderRow = {
   address: string | null;
   total_kzt: number | null;
   payment_file_id: string | null;
+  payment_file_kind: PaymentFileKind | null;
+  payer_name: string | null;
   created_at: string;
   updated_at: string;
 };

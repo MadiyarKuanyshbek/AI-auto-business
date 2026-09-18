@@ -66,12 +66,18 @@ export async function sendTelegramPhotoAs(
   chatId: number | string,
   fileId: string,
   caption: string,
+  keyboard?: InlineKeyboard,
 ) {
   try {
     const response = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, photo: fileId, caption: caption.slice(0, 1024) }),
+      body: JSON.stringify({
+        chat_id: chatId,
+        photo: fileId,
+        caption: caption.slice(0, 1024),
+        reply_markup: keyboard ? { inline_keyboard: keyboard } : undefined,
+      }),
     });
 
     if (!response.ok) {
@@ -83,6 +89,41 @@ export async function sendTelegramPhotoAs(
     return { ok: true as const };
   } catch (error) {
     console.error("Telegram sendPhoto request failed:", error instanceof Error ? error.message : error);
+    return { ok: false as const };
+  }
+}
+
+/** То же самое, но для чека, присланного файлом/документом (например, PDF из
+ * Kaspi "поделиться чеком"), а не сжатым фото — Telegram различает эти два
+ * типа file_id, sendPhoto не примет document-file_id и наоборот. */
+export async function sendTelegramDocumentAs(
+  botToken: string,
+  chatId: number | string,
+  fileId: string,
+  caption: string,
+  keyboard?: InlineKeyboard,
+) {
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        document: fileId,
+        caption: caption.slice(0, 1024),
+        reply_markup: keyboard ? { inline_keyboard: keyboard } : undefined,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Telegram sendDocument failed (${response.status}): ${errorText}`);
+      return { ok: false as const };
+    }
+
+    return { ok: true as const };
+  } catch (error) {
+    console.error("Telegram sendDocument request failed:", error instanceof Error ? error.message : error);
     return { ok: false as const };
   }
 }
@@ -131,7 +172,10 @@ export async function answerInlineQuery(inlineQueryId: string, results: InlineQu
 export async function answerCallbackQuery(callbackQueryId: string, text?: string) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   if (!botToken) return;
+  return answerCallbackQueryAs(botToken, callbackQueryId, text);
+}
 
+export async function answerCallbackQueryAs(botToken: string, callbackQueryId: string, text?: string) {
   try {
     await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
       method: "POST",

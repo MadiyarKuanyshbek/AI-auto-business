@@ -1,5 +1,5 @@
-import { sql, type MenuItem, type OrderItem, type OrderLanguage, type SubscriptionRow, type TelegramOrderRow } from "@/lib/db";
-import { sendTelegramMessageAs, sendTelegramPhotoAs, notifyOwner } from "@/lib/telegram";
+import { sql, type MenuItem, type OrderItem, type OrderLanguage, type PaymentFileKind, type SubscriptionRow, type TelegramOrderRow } from "@/lib/db";
+import { sendTelegramMessageAs, sendTelegramPhotoAs, sendTelegramDocumentAs, notifyOwner } from "@/lib/telegram";
 import { generateJsonReply } from "@/src/gemini";
 import { SITE_URL } from "@/lib/siteUrl";
 
@@ -10,7 +10,8 @@ const MENU_PHOTO_URLS = [`${SITE_URL}/menu/page1.jpg`, `${SITE_URL}/menu/page2.j
 
 type IncomingMessage = {
   text?: string;
-  photoFileId?: string;
+  fileId?: string;
+  fileKind?: PaymentFileKind;
   chatId: number;
   customerName: string | null;
 };
@@ -118,9 +119,12 @@ const T = {
     confirm: (summary: string) => `${summary}\n\nВсё верно? Напишите «да», чтобы отправить заказ в оплату, или «нет», если нужно что-то изменить.`,
     backToEdit: () => `Хорошо, что изменить? Можете добавить позиции или написать «уберите X» — уберу лишнее.`,
     paymentAsk: (requisites: string) =>
-      `Отлично! Для оплаты переведите сумму на Kaspi:\n${requisites}\n\nПосле перевода пришлите, пожалуйста, скриншот чека сюда фото — и заказ сразу уйдёт на кухню.`,
-    paymentReminder: () => `Жду скриншот перевода — просто пришлите его сюда фото.`,
+      `Отлично! Прежде чем переведёте — напишите, пожалуйста, ваше имя (как оно указано в Kaspi-переводе, чтобы мы точно сверили оплату).\n\nЗатем переведите сумму на Kaspi:\n${requisites}\n\nЧек можно прислать сюда как скриншотом (фото), так и файлом — как удобнее.`,
+    payerNameSaved: () => `Принял, спасибо! Жду чек — фото или файл.`,
+    paymentReminder: () => `Жду чек об оплате — пришлите его сюда фото или файлом.`,
     orderSent: () => `Спасибо! Заказ и чек отправлены — как только подтвердим оплату, начнём готовить. 🙏`,
+    orderReadyPickup: () => `🎉 Ваш заказ готов! Можно забирать.`,
+    orderReadyDelivery: () => `🎉 Ваш заказ готов, курьер уже выезжает!`,
     cancelled: () => `Заказ отменён. Напишите в любой момент, если захотите оформить новый.`,
     fallback: () => `Извините, не совсем понял 🙏 Напишите /menu чтобы увидеть меню, или опишите заказ подробнее.`,
   },
@@ -141,9 +145,12 @@ const T = {
     confirm: (summary: string) => `${summary}\n\nБәрі дұрыс па? Төлемге жіберу үшін «иә» деп жазыңыз, өзгерту керек болса — «жоқ».`,
     backToEdit: () => `Жарайды, нені өзгерту керек? Позиция қосуға немесе «X-ті алып тастаңыз» деп жазуға болады.`,
     paymentAsk: (requisites: string) =>
-      `Тамаша! Төлеу үшін Kaspi-ға аударыңыз:\n${requisites}\n\nАударғаннан кейін, өтінемін, чек скриншотын осында фото түрінде жіберіңіз — тапсырыс бірден дайындалуға кетеді.`,
-    paymentReminder: () => `Аударым скриншотын күтіп тұрмын — осында фото жіберіңіз.`,
+      `Тамаша! Аударым жасамас бұрын атыңызды жазыңыз (Kaspi аударымындағыдай — төлемді дәл салыстыру үшін).\n\nСодан кейін Kaspi-ға аударыңыз:\n${requisites}\n\nЧекті скриншот немесе файл түрінде жіберуге болады — қалай ыңғайлы, солай.`,
+    payerNameSaved: () => `Қабылдадым, рахмет! Чекті күтемін — фото немесе файл.`,
+    paymentReminder: () => `Төлем чегін күтіп тұрмын — осында фото немесе файл жіберіңіз.`,
     orderSent: () => `Рахмет! Тапсырыс пен чек жіберілді — төлем расталған соң дайындай бастаймыз. 🙏`,
+    orderReadyPickup: () => `🎉 Тапсырысыңыз дайын! Алып кетуге болады.`,
+    orderReadyDelivery: () => `🎉 Тапсырысыңыз дайын, курьер жолға шықты!`,
     cancelled: () => `Тапсырыс тоқтатылды. Кез келген уақытта жаңа тапсырыс беруге жазыңыз.`,
     fallback: () => `Кешіріңіз, толық түсінбедім 🙏 Мәзірді көру үшін /menu жазыңыз немесе тапсырысты толығырақ сипаттаңыз.`,
   },
@@ -203,7 +210,7 @@ async function getOrCreateOrder(subscriptionId: number, chatId: number, customer
   const db = sql!;
   const [existing] = (await db`
     SELECT * FROM telegram_orders
-    WHERE subscription_id = ${subscriptionId} AND customer_chat_id = ${chatId} AND state NOT IN ('sent', 'cancelled')
+    WHERE subscription_id = ${subscriptionId} AND customer_chat_id = ${chatId} AND state NOT IN ('sent', 'ready', 'cancelled')
     ORDER BY created_at DESC LIMIT 1
   `) as TelegramOrderRow[];
   if (existing) return { order: existing, isNew: false };
@@ -225,6 +232,8 @@ async function saveOrder(order: TelegramOrderRow) {
       address = ${order.address},
       total_kzt = ${order.total_kzt},
       payment_file_id = ${order.payment_file_id},
+      payment_file_kind = ${order.payment_file_kind},
+      payer_name = ${order.payer_name},
       updated_at = now()
     WHERE id = ${order.id}
   `;
@@ -259,7 +268,7 @@ export async function processOrderMessage(sub: SubscriptionRow, message: Incomin
   const t = T[order.language];
   const menu = sub.menu_items;
 
-  if (isNew && !message.photoFileId) {
+  if (isNew && !message.fileId) {
     const closedPrefix =
       !isOpenNow(sub) && sub.opens_at && sub.closes_at
         ? t.closedNotice(sub.opens_at.slice(0, 5), sub.closes_at.slice(0, 5))
@@ -402,28 +411,73 @@ export async function processOrderMessage(sub: SubscriptionRow, message: Incomin
   }
 
   if (order.state === "payment") {
-    if (!message.photoFileId) {
+    // Имя (для сверки с Kaspi-переводом) и чек могут прийти в любом порядке
+    // и отдельными сообщениями — принимаем оба независимо.
+    if (text && !message.fileId) {
+      order.payer_name = text;
+      await saveOrder(order);
+      await reply(sub, message.chatId, t.payerNameSaved());
+      return;
+    }
+
+    if (!message.fileId) {
       await reply(sub, message.chatId, t.paymentReminder());
       return;
     }
-    order.payment_file_id = message.photoFileId;
+
+    order.payment_file_id = message.fileId;
+    order.payment_file_kind = message.fileKind ?? "photo";
+    // Если клиент не назвал имя явно — берём подпись к фото/файлу, если он
+    // написал имя туда, иначе имя из профиля Telegram (лучше приблизительно, чем никак).
+    if (!order.payer_name) order.payer_name = text || message.customerName;
     order.state = "sent";
     await saveOrder(order);
     await reply(sub, message.chatId, t.orderSent());
 
     const caption = buildOwnerNotification(order, sub);
+    const readyKeyboard = [[{ text: "✅ Заказ готов", callback_data: `ready:${order.id}` }]];
     const ownerChatId = sub.telegram_owner_chat_id;
     if (ownerChatId) {
-      await sendTelegramPhotoAs(sub.telegram_bot_token, ownerChatId, message.photoFileId, caption);
+      if (order.payment_file_kind === "document") {
+        await sendTelegramDocumentAs(sub.telegram_bot_token, ownerChatId, message.fileId, caption, readyKeyboard);
+      } else {
+        await sendTelegramPhotoAs(sub.telegram_bot_token, ownerChatId, message.fileId, caption, readyKeyboard);
+      }
     } else {
       // Владелец ещё не привязал аккаунт (/start link_...) — не теряем заказ,
-      // шлём агентству, чтобы переслали вручную и напомнили привязать.
+      // шлём агентству, чтобы переслали вручную и напомнили привязать. Кнопку
+      // "готово" сюда не прикрепляем — это чужой бот, callback не обработает.
       await notifyOwner(
         `⚠️ У подписки "${sub.business_name}" (owner_id ${sub.owner_id}) владелец ещё не привязал Telegram — заказ не смог дойти напрямую.\n\n${caption}`,
       );
     }
     return;
   }
+}
+
+/** Обрабатывает нажатие inline-кнопки владельцем под уведомлением о заказе
+ * (пока только "Заказ готов") — возвращает текст всплывающей подсказки для
+ * answerCallbackQuery. */
+export async function handleOwnerCallback(sub: SubscriptionRow, data: string): Promise<string> {
+  const match = /^ready:(\d+)$/.exec(data);
+  if (!match || !sql || !sub.telegram_bot_token) return "Не получилось";
+
+  const [order] = (await sql`
+    SELECT * FROM telegram_orders WHERE id = ${Number(match[1])} AND subscription_id = ${sub.id}
+  `) as TelegramOrderRow[];
+  if (!order) return "Заказ не найден";
+  if (order.state === "ready") return "Уже отмечено готовым";
+
+  await sql`UPDATE telegram_orders SET state = 'ready', updated_at = now() WHERE id = ${order.id}`;
+
+  const t = T[order.language];
+  await sendTelegramMessageAs(
+    sub.telegram_bot_token,
+    order.customer_chat_id,
+    order.delivery_type === "delivery" ? t.orderReadyDelivery() : t.orderReadyPickup(),
+  );
+
+  return "Клиент уведомлён ✅";
 }
 
 function buildSummary(order: TelegramOrderRow, sub: SubscriptionRow): string {
@@ -439,5 +493,6 @@ function buildOwnerNotification(order: TelegramOrderRow, sub: SubscriptionRow): 
   const total = computeTotal(order.items);
   const deliveryText = order.delivery_type === "delivery" ? `Доставка: ${order.address}` : `Самовывоз`;
   const customer = order.customer_name ? `${order.customer_name} (чат ${order.customer_chat_id})` : `чат ${order.customer_chat_id}`;
-  return `🔔 Новый заказ — ${sub.business_name}\n\nОт: ${customer}\n\n${cartText}\n\n${deliveryText}\nИтого: ${total.toLocaleString("ru-RU")} ₸\n\n💳 Скриншот оплаты — во вложении. Проверьте перевод и начинайте готовить.`;
+  const payerLine = order.payer_name ? `\n👤 Имя в Kaspi: ${order.payer_name}` : "";
+  return `🔔 Новый заказ — ${sub.business_name}\n\nОт: ${customer}${payerLine}\n\n${cartText}\n\n${deliveryText}\nИтого: ${total.toLocaleString("ru-RU")} ₸\n\n💳 Чек — во вложении. Проверьте перевод, сверьте имя и начинайте готовить. Когда готово — нажмите кнопку ниже.`;
 }

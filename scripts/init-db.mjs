@@ -207,6 +207,15 @@ async function main() {
   await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS opens_at TIME`;
   await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS closes_at TIME`;
 
+  // Чек оплаты можно прислать и сжатым фото, и файлом (Kaspi иногда не даёт
+  // сделать скриншот, зато можно поделиться чеком как файлом/PDF) — тип нужен,
+  // чтобы пересылать владельцу тем же способом (sendPhoto либо sendDocument).
+  await sql`ALTER TABLE telegram_orders ADD COLUMN IF NOT EXISTS payment_file_kind TEXT`;
+  // Имя, как оно указано в самом переводе Kaspi — отдельно от имени в Telegram
+  // (человек может писать из чужого аккаунта), чтобы владелец мог сверить,
+  // от кого именно пришли деньги, если несколько заказов идут одновременно.
+  await sql`ALTER TABLE telegram_orders ADD COLUMN IF NOT EXISTS payer_name TEXT`;
+
   console.log("Готово: таблицы leads, businesses, group_leads, telegram_sessions, system_status, subscriptions, subscription_payments, telegram_orders существуют и обновлены.");
 }
 

@@ -458,14 +458,16 @@ export async function processOrderMessage(sub: SubscriptionRow, message: Incomin
 
     order.payment_file_id = message.fileId;
     order.payment_file_kind = message.fileKind ?? "photo";
-    // Если клиент не назвал имя явно — берём подпись к фото/файлу, если он
-    // написал имя туда, иначе имя из профиля Telegram (лучше приблизительно, чем никак).
-    if (!order.payer_name) order.payer_name = text || message.customerName;
+    // Подпись к фото/файлу — это обычно не имя, а вопрос или комментарий
+    // клиента ("сколько ждать?" и т.п.) — реальный случай, где это ушло в
+    // payer_name и потерялось. Имя берём только из профиля Telegram, а любую
+    // подпись просто добавляем текстом владельцу, а не подменяем ей имя.
+    if (!order.payer_name) order.payer_name = message.customerName;
     order.state = "sent";
     await saveOrder(order);
     await reply(sub, message.chatId, t.orderSent());
 
-    const caption = buildOwnerNotification(order, sub);
+    const caption = buildOwnerNotification(order, sub) + (text ? `\n\n💬 Комментарий клиента: ${text}` : "");
     const readyKeyboard = [[{ text: "✅ Заказ готов", callback_data: `ready:${order.id}` }]];
     const ownerChatId = sub.telegram_owner_chat_id;
     if (ownerChatId) {

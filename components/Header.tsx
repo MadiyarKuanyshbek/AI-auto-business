@@ -11,9 +11,9 @@ export default function Header() {
   return (
     <header className="border-b border-border">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 py-5 sm:gap-4 sm:px-6">
-        <span className="font-display text-base font-bold tracking-tight sm:text-lg">
+        <Link href="/" className="font-display text-base font-bold tracking-tight sm:text-lg">
           Автопилот<span className="text-accent">.AI</span>
-        </span>
+        </Link>
         <nav className="hidden items-center gap-6 sm:flex">
           {navLinks.map((link) => (
             <a

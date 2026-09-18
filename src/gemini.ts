@@ -32,7 +32,10 @@ function isDailyQuotaExhausted(err: unknown) {
 async function tryModel(modelName: string, prompt: string, userMessage: string, json: boolean) {
   const model = genAI.getGenerativeModel({
     model: modelName,
-    generationConfig: json ? { responseMimeType: "application/json" } : undefined,
+    // temperature: 0 — для JSON-разбора заказа важна повторяемость, а не
+    // креативность; со стандартной температурой модель на одном и том же
+    // сообщении иногда подставляла случайную не ту позицию меню.
+    generationConfig: json ? { responseMimeType: "application/json", temperature: 0 } : undefined,
   });
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {

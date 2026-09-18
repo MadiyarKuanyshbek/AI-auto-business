@@ -169,6 +169,12 @@ export default function ProductDemoModal({
         </form>
 
         <div className="flex flex-col gap-2 border-t border-border p-4">
+          <Link
+            href={`/register/${product.id}`}
+            className="block rounded-full bg-accent px-5 py-3 text-center text-sm font-semibold text-accent-foreground transition-all hover:scale-[1.02] hover:bg-accent/90 active:scale-[0.98]"
+          >
+            🚀 Подключить бота сейчас
+          </Link>
           <div className="flex gap-2">
             <Link
               href={`/demo/${product.id}/${business.slug}`}

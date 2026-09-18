@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { track } from "@vercel/analytics";
 import { products, type Business } from "@/lib/products";
 import BusinessPetalPicker from "./BusinessPetalPicker";
@@ -74,15 +75,24 @@ export default function ProductsSection() {
                     {product.beforeAfter.after}
                   </p>
                 </div>
-                <button
-                  onClick={() => {
-                    track("demo_opened", { product: product.id });
-                    setPickingProductId(product.id);
-                  }}
-                  className="mt-6 rounded-full bg-accent px-5 py-2 text-center text-sm font-semibold text-accent-foreground transition-all hover:scale-[1.03] hover:bg-accent/90 active:scale-[0.98]"
-                >
-                  Протестировать демо
-                </button>
+                <div className="mt-6 flex flex-col gap-2">
+                  <button
+                    onClick={() => {
+                      track("demo_opened", { product: product.id });
+                      setPickingProductId(product.id);
+                    }}
+                    className="rounded-full bg-accent px-5 py-2 text-center text-sm font-semibold text-accent-foreground transition-all hover:scale-[1.03] hover:bg-accent/90 active:scale-[0.98]"
+                  >
+                    Протестировать демо
+                  </button>
+                  <Link
+                    href={`/register/${product.id}`}
+                    onClick={() => track("register_opened", { product: product.id })}
+                    className="rounded-full border border-accent/40 bg-accent/10 px-5 py-2 text-center text-sm font-medium text-accent transition-colors hover:bg-accent/20"
+                  >
+                    Подключить бота
+                  </Link>
+                </div>
               </div>
             </Reveal>
           ))}

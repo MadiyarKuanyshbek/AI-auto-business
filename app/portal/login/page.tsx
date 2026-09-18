@@ -1,3 +1,4 @@
+import Link from "next/link";
 import PortalLoginForm from "@/components/portal/PortalLoginForm";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,12 @@ export default function PortalLoginPage() {
         <div className="mt-8">
           <PortalLoginForm />
         </div>
+        <p className="mt-6 text-center text-sm text-muted">
+          Ещё нет бота?{" "}
+          <Link href="/#products" className="font-medium text-accent hover:underline">
+            Подключить и зарегистрироваться
+          </Link>
+        </p>
       </div>
     </div>
   );

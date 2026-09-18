@@ -462,8 +462,18 @@ export async function processOrderMessage(sub: SubscriptionRow, message: Incomin
     }
     if (matchesAny(lowerText, NO_WORDS)) {
       order.state = "collecting";
+      // Клиент мог сразу написать, что поправить, тем же сообщением ("нет,
+      // уберите стрипсы") — пробуем применить правку сейчас же, а не просто
+      // перейти в режим правки и потерять инструкцию до следующего сообщения.
+      const parsed = await extractOrderItems(menu, order.items, text);
+      if (parsed?.items.length) order.items = mergeCart(order.items, parsed.items, menu);
+      if (parsed?.removeItems.length) order.items = removeFromCart(order.items, parsed.removeItems, menu);
       await saveOrder(order);
-      await reply(sub, message.chatId, t.backToEdit());
+      if (parsed && (parsed.items.length > 0 || parsed.removeItems.length > 0)) {
+        await reply(sub, message.chatId, t.itemsAdded(formatCart(order.items), computeTotal(order.items)));
+      } else {
+        await reply(sub, message.chatId, t.backToEdit());
+      }
       return;
     }
     await reply(sub, message.chatId, t.confirm(buildSummary(order, sub)));

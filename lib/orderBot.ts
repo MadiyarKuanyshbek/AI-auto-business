@@ -41,6 +41,7 @@ function computeTotal(items: OrderItem[]): number {
 function mergeCart(cart: OrderItem[], deltas: { name: string; qty: number }[], menu: MenuItem[]): OrderItem[] {
   const next = cart.map((item) => ({ ...item }));
   for (const delta of deltas) {
+    if (!delta || typeof delta.name !== "string") continue;
     const menuItem = menu.find((m) => m.name.toLowerCase() === delta.name.toLowerCase());
     if (!menuItem) continue;
     const qty = Math.max(1, Math.floor(Number(delta.qty)) || 1);
@@ -96,29 +97,45 @@ const T = {
   },
 };
 
-async function extractOrderItems(menu: MenuItem[], userMessage: string) {
+type ParsedOrder = { items: { name: string; qty: number }[]; finished: boolean; unclear: boolean };
+
+async function extractOrderItems(menu: MenuItem[], userMessage: string): Promise<ParsedOrder | null> {
   const prompt = `Ты — ассистент, который разбирает сообщение клиента точки быстрого питания и определяет, какие позиции меню и в каком количестве он хочет заказать.
 
 Меню (точные названия и цены в тенге):
 ${formatMenuText(menu)}
 
 Правила:
+- Перечисли В ПОЛНОМ ОБЪЁМЕ все позиции, упомянутые в сообщении, — не пропускай ни одной, даже если их несколько.
 - В поле "items" перечисли только те позиции, которые есть в меню выше, используя ТОЧНОЕ название из списка (символ в символ).
+- Будь ОСОБЕННО внимателен к виду мяса — "говяжий", "куриный" и "ассорти" это РАЗНЫЕ позиции, не путай их между собой.
 - Если количество явно не указано — считай его равным 1.
 - Если клиент говорит, что закончил заказ ("всё", "это всё", "больше ничего", "оформляйте", "хватит", "давай оформляй", "болды") — поставь "finished": true.
 - Если упомянутое блюдо не удаётся уверенно сопоставить ни с одной позицией меню — не добавляй его в items и поставь "unclear": true.
 - Если сообщение вообще не про заказ (приветствие, вопрос и т.п.) — верни пустой items, finished:false, unclear:false.
 
-Ответь СТРОГО в формате JSON без пояснений:
+Пример:
+Сообщение: "2 донера куриных в лаваше и картошку фри"
+Ответ: {"items": [{"name": "Донер куриный в лаваше", "qty": 2}, {"name": "Картофель фри с соусом", "qty": 1}], "finished": false, "unclear": false}
+
+Ответь СТРОГО в формате JSON без пояснений, всегда включай поле "items" (пустой массив [], если позиций нет):
 {"items": [{"name": "точное название из меню", "qty": число}], "finished": boolean, "unclear": boolean}`;
 
-  type Parsed = { items: { name: string; qty: number }[]; finished: boolean; unclear: boolean };
   // Не даём вебхуку зависнуть дольше таймаута Telegram — если Gemini не
   // успела за 15с, просим клиента повторить, а не молчим до 30с maxDuration.
-  return Promise.race([
-    generateJsonReply<Parsed>(prompt, userMessage),
-    new Promise<Parsed | null>((resolve) => setTimeout(() => resolve(null), 15000)),
+  const raw = await Promise.race([
+    generateJsonReply<Partial<ParsedOrder>>(prompt, userMessage),
+    new Promise<Partial<ParsedOrder> | null>((resolve) => setTimeout(() => resolve(null), 15000)),
   ]);
+
+  if (!raw) return null;
+  // Модель иногда возвращает не совсем ту форму (например, без "items") —
+  // не даём этому уронить обработчик, просто нормализуем к безопасному виду.
+  return {
+    items: Array.isArray(raw.items) ? raw.items : [],
+    finished: raw.finished === true,
+    unclear: raw.unclear === true,
+  };
 }
 
 async function getOrCreateOrder(subscriptionId: number, chatId: number, customerName: string | null, language: OrderLanguage) {

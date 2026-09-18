@@ -66,7 +66,7 @@ export default function PortalLoginForm() {
       router.refresh();
     } catch {
       setStatus("error");
-      setError("Неверный или истёкший код. Проверьте WhatsApp — код приходит сообщением самому себе.");
+      setError("Неверный или истёкший код. Проверьте чат с ботом — там пришло сообщение с кодом.");
     }
   }
 
@@ -74,11 +74,12 @@ export default function PortalLoginForm() {
     return (
       <form onSubmit={handleCodeSubmit} className="space-y-4">
         <p className="text-sm text-muted">
-          Мы отправили код в ваш WhatsApp — сообщением самому себе (найдите чат «Вы» / «Message Yourself»).
+          Мы отправили код в мессенджер бота: в WhatsApp — сообщением самому себе (чат «Вы» / «Message Yourself»), в
+          Telegram — в чат с вашим ботом.
         </p>
         <div>
           <label htmlFor="code" className="block text-sm font-medium">
-            Код из WhatsApp
+            Код из сообщения
           </label>
           <input
             id="code"
@@ -129,7 +130,7 @@ export default function PortalLoginForm() {
     <form onSubmit={handlePhoneSubmit} className="space-y-4">
       <div>
         <label htmlFor="phone" className="block text-sm font-medium">
-          Номер WhatsApp, на который подключён бот
+          Номер, который вы указали при подключении бота
         </label>
         <input
           id="phone"
@@ -150,7 +151,7 @@ export default function PortalLoginForm() {
         disabled={status === "submitting"}
         className="w-full rounded-full bg-accent px-6 py-3 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent/90 disabled:opacity-60"
       >
-        {status === "submitting" ? "Отправляем код..." : "Получить код в WhatsApp"}
+        {status === "submitting" ? "Отправляем код..." : "Получить код"}
       </button>
     </form>
   );

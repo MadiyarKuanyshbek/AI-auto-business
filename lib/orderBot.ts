@@ -1,6 +1,12 @@
 import { sql, type MenuItem, type OrderItem, type OrderLanguage, type SubscriptionRow, type TelegramOrderRow } from "@/lib/db";
 import { sendTelegramMessageAs, sendTelegramPhotoAs, notifyOwner } from "@/lib/telegram";
 import { generateJsonReply } from "@/src/gemini";
+import { SITE_URL } from "@/lib/siteUrl";
+
+// Фото реального меню (см. public/menu) — отправляются вместе с текстовым
+// списком, чтобы клиенту было наглядно. Пока общие для всех подписок; когда
+// появится самостоятельная загрузка меню клиентом, путь переедет в БД.
+const MENU_PHOTO_URLS = [`${SITE_URL}/menu/page1.jpg`, `${SITE_URL}/menu/page2.jpg`];
 
 type IncomingMessage = {
   text?: string;
@@ -174,6 +180,12 @@ async function reply(sub: SubscriptionRow, chatId: number, text: string) {
   await sendTelegramMessageAs(sub.telegram_bot_token!, chatId, text);
 }
 
+async function sendMenuPhotos(sub: SubscriptionRow, chatId: number) {
+  for (const url of MENU_PHOTO_URLS) {
+    await sendTelegramPhotoAs(sub.telegram_bot_token!, chatId, url, "");
+  }
+}
+
 export async function processOrderMessage(sub: SubscriptionRow, message: IncomingMessage) {
   if (!sql || !sub.telegram_bot_token || !sub.menu_items) return;
 
@@ -202,6 +214,7 @@ export async function processOrderMessage(sub: SubscriptionRow, message: Incomin
   }
 
   if (text && matchesAny(lowerText, MENU_WORDS)) {
+    await sendMenuPhotos(sub, message.chatId);
     await reply(sub, message.chatId, t.menu(formatMenuText(menu)));
     return;
   }
@@ -244,6 +257,7 @@ export async function processOrderMessage(sub: SubscriptionRow, message: Incomin
     }
 
     // Не про заказ (приветствие/вопрос) — не тратим лишний AI-вызов, просто мягко подталкиваем.
+    if (isNew) await sendMenuPhotos(sub, message.chatId);
     await reply(sub, message.chatId, isNew ? t.menu(formatMenuText(menu)) : t.fallback());
     return;
   }

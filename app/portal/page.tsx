@@ -36,7 +36,7 @@ export default async function PortalPage() {
   const needsRenewal = sub.status === "expired" || sub.status === "pending_payment";
 
   let botStatus: "connected" | "connecting" | "not_started" | "unknown" = "unknown";
-  if (sub.status === "active") {
+  if (sub.status === "active" && sub.channel === "whatsapp") {
     try {
       const bridgeUrl = process.env.WA_BRIDGE_URL ?? "http://127.0.0.1:4001";
       const secret = process.env.INTERNAL_BRIDGE_SECRET;
@@ -51,6 +51,10 @@ export default async function PortalPage() {
     } catch {
       // Демон недоступен (например, локальная разработка) — просто не покажем статус.
     }
+  } else if (sub.status === "active" && sub.channel === "telegram") {
+    // У Telegram-бота нет отдельного демона — если вебхук зарегистрирован
+    // (см. подключение), бот всегда "подключён", промежуточных статусов нет.
+    botStatus = sub.telegram_bot_token ? "connected" : "not_started";
   }
 
   const BOT_STATUS_LABELS: Record<string, string> = {
@@ -88,7 +92,7 @@ export default async function PortalPage() {
           )}
           {sub.status === "active" && (
             <div className="mt-2 flex items-center justify-between text-sm">
-              <span className="text-muted">Бот в WhatsApp</span>
+              <span className="text-muted">Бот в {sub.channel === "telegram" ? "Telegram" : "WhatsApp"}</span>
               <span className="font-medium">{BOT_STATUS_LABELS[botStatus]}</span>
             </div>
           )}

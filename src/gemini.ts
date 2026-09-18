@@ -4,16 +4,23 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? "");
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Бесплатный тир Gemini иногда отвечает 503 ("high demand") или 429
-// (rate limit) — это временные сбои, есть смысл повторить попытку.
+// 503 ("high demand") — временный сбой, есть смысл быстро повторить.
+// 429 бывает двух видов: короткий per-minute лимит (стоит подождать секунду)
+// и суточная квота free tier (retryDelay в ответе — десятки секунд); повторять
+// суточную квоту в рамках одного запроса бессмысленно — сразу уходим на fallback-модель.
 const RETRYABLE_STATUS = new Set([429, 503]);
-const MAX_ATTEMPTS = 5;
-const BASE_DELAY_MS = 500;
+const MAX_ATTEMPTS = 2;
+const BASE_DELAY_MS = 300;
 
 const PRIMARY_MODEL = "gemini-flash-latest";
 const FALLBACK_MODEL = "gemini-flash-lite-latest";
 
 const FALLBACK_REPLY = "Принял ваш запрос! Менеджер свяжется с вами в течение 2 минут.";
+
+function isDailyQuotaExhausted(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err);
+  return /PerDay/i.test(message) || /generate_content_free_tier_requests/i.test(message);
+}
 
 async function tryModel(modelName: string, prompt: string, userMessage: string, json: boolean) {
   const model = genAI.getGenerativeModel({
@@ -28,7 +35,7 @@ async function tryModel(modelName: string, prompt: string, userMessage: string, 
     } catch (err) {
       const status = (err as { status?: number }).status;
       const isRetryable = status !== undefined && RETRYABLE_STATUS.has(status);
-      if (!isRetryable || attempt === MAX_ATTEMPTS) throw err;
+      if (!isRetryable || isDailyQuotaExhausted(err) || attempt === MAX_ATTEMPTS) throw err;
 
       // Экспоненциальный бэкофф + джиттер, чтобы параллельные ретраи не
       // долбили API синхронной пачкой в один и тот же момент.

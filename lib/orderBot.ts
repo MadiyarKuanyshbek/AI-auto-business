@@ -122,13 +122,15 @@ ${formatMenuText(menu)}
 {"items": [{"name": "точное название из меню", "qty": число}], "finished": boolean, "unclear": boolean}`;
 
   // Не даём вебхуку зависнуть дольше таймаута Telegram — если Gemini не
-  // успела за 15с, просим клиента повторить, а не молчим до 30с maxDuration.
+  // успела за 25с, просим клиента повторить, а не молчим до 30с maxDuration.
+  const startedAt = Date.now();
   const raw = await Promise.race([
     generateJsonReply<Partial<ParsedOrder>>(prompt, userMessage),
-    new Promise<Partial<ParsedOrder> | null>((resolve) => setTimeout(() => resolve(null), 15000)),
+    new Promise<Partial<ParsedOrder> | "TIMEOUT">((resolve) => setTimeout(() => resolve("TIMEOUT"), 25000)),
   ]);
+  console.log(`[orderBot] extractOrderItems took ${Date.now() - startedAt}ms, result: ${raw === "TIMEOUT" ? "TIMEOUT" : raw ? "ok" : "null"}`);
 
-  if (!raw) return null;
+  if (raw === "TIMEOUT" || !raw) return null;
   // Модель иногда возвращает не совсем ту форму (например, без "items") —
   // не даём этому уронить обработчик, просто нормализуем к безопасному виду.
   return {

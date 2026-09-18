@@ -123,14 +123,10 @@ ${formatMenuText(menu)}
 
   // Не даём вебхуку зависнуть дольше таймаута Telegram — если Gemini не
   // успела за 25с, просим клиента повторить, а не молчим до 30с maxDuration.
-  const startedAt = Date.now();
   const raw = await Promise.race([
     generateJsonReply<Partial<ParsedOrder>>(prompt, userMessage),
     new Promise<Partial<ParsedOrder> | "TIMEOUT">((resolve) => setTimeout(() => resolve("TIMEOUT"), 25000)),
   ]);
-  console.log(
-    `[orderBot] extractOrderItems took ${Date.now() - startedAt}ms, userMessage=${JSON.stringify(userMessage)}, raw=${JSON.stringify(raw)}`,
-  );
 
   if (raw === "TIMEOUT" || !raw) return null;
   // Модель иногда возвращает не совсем ту форму (например, без "items") —

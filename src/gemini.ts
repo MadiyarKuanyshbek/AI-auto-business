@@ -94,7 +94,6 @@ export async function generateJsonReply<T>(prompt: string, userMessage: string):
   })();
 
   if (!raw) return null;
-  console.log(`[gemini] raw JSON text: ${raw}`);
   try {
     return JSON.parse(raw) as T;
   } catch (err) {

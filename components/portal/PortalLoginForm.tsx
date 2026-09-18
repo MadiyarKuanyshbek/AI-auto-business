@@ -15,6 +15,7 @@ export default function PortalLoginForm() {
   const [remember, setRemember] = useState(true);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
 
   async function handlePhoneSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -26,6 +27,7 @@ export default function PortalLoginForm() {
 
     setStatus("submitting");
     setError("");
+    setLinkUrl("");
     try {
       const response = await fetch("/api/portal/request-code", {
         method: "POST",
@@ -34,6 +36,9 @@ export default function PortalLoginForm() {
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
+        if (data.error === "telegram_not_linked" && data.botUsername && data.ownerId) {
+          setLinkUrl(`https://t.me/${data.botUsername}?start=link_${data.ownerId}`);
+        }
         throw new Error(data.error === "bot_offline" || data.error === "telegram_not_linked" ? data.error : "request_failed");
       }
       setStatus("idle");
@@ -45,7 +50,7 @@ export default function PortalLoginForm() {
         code === "bot_offline"
           ? "Бот сейчас не в сети, код отправить не удалось. Попробуйте чуть позже."
           : code === "telegram_not_linked"
-            ? "Сначала привяжите Telegram-аккаунт — откройте своего бота и нажмите «Start» по ссылке со страницы подключения."
+            ? "Сначала привяжите Telegram-аккаунт — откройте бота по кнопке ниже и нажмите «Start»."
             : "Не получилось отправить код. Проверьте номер и попробуйте ещё раз.",
       );
     }
@@ -145,6 +150,16 @@ export default function PortalLoginForm() {
       </div>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
+      {linkUrl && (
+        <a
+          href={linkUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block w-full rounded-full border border-accent/50 bg-accent/10 px-6 py-3 text-center text-sm font-semibold text-accent transition-colors hover:bg-accent/20"
+        >
+          Открыть бота и привязать аккаунт
+        </a>
+      )}
 
       <button
         type="submit"

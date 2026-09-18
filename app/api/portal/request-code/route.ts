@@ -70,7 +70,10 @@ export async function POST(request: Request) {
 
   if (sub.channel === "telegram") {
     if (!sub.telegram_owner_chat_id) {
-      return NextResponse.json({ error: "telegram_not_linked" }, { status: 409 });
+      return NextResponse.json(
+        { error: "telegram_not_linked", botUsername: sub.telegram_bot_username, ownerId: sub.owner_id },
+        { status: 409 },
+      );
     }
     const sent = await notifyViaTelegram(sub, text);
     if (!sent) {

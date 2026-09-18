@@ -31,7 +31,11 @@ export default async function PortalSettingsPage() {
         <p className="mt-1 text-sm text-muted">{sub.business_name}</p>
 
         <div className="mt-8">
-          <PromptSettingsForm initialPrompt={sub.system_prompt} />
+          <PromptSettingsForm
+            initialPrompt={sub.system_prompt}
+            initialOpensAt={sub.opens_at?.slice(0, 5) ?? ""}
+            initialClosesAt={sub.closes_at?.slice(0, 5) ?? ""}
+          />
         </div>
       </div>
     </div>

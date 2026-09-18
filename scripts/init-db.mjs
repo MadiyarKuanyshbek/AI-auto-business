@@ -196,6 +196,16 @@ async function main() {
     ON telegram_orders (subscription_id, customer_chat_id)
     WHERE state NOT IN ('sent', 'cancelled')
   `;
+  // Список заказов (для админки и портала клиента) читается чаще всего по
+  // "последние заказы этой подписки" — обычный внешний ключ уже проиндексирован
+  // (references создаёт индекс), явный композитный не нужен, но сортировка по
+  // created_at на большом объёме выиграет от индекса.
+  await sql`CREATE INDEX IF NOT EXISTS telegram_orders_created_idx ON telegram_orders (subscription_id, created_at DESC)`;
+
+  // Часы работы (для сообщения "сейчас не работаем") — NULL = без ограничений,
+  // бот принимает заказы круглосуточно. Время — по Алматы (единый пояс для РК).
+  await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS opens_at TIME`;
+  await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS closes_at TIME`;
 
   console.log("Готово: таблицы leads, businesses, group_leads, telegram_sessions, system_status, subscriptions, subscription_payments, telegram_orders существуют и обновлены.");
 }

@@ -98,9 +98,18 @@ export default async function PortalPage() {
           )}
         </div>
 
+        {sub.channel === "telegram" && (
+          <Link
+            href="/portal/orders"
+            className="mt-4 block w-full rounded-full border border-border px-6 py-3 text-center text-sm font-semibold transition-colors hover:bg-white/5"
+          >
+            Заказы
+          </Link>
+        )}
+
         <Link
           href="/portal/settings"
-          className="mt-4 block w-full rounded-full border border-border px-6 py-3 text-center text-sm font-semibold transition-colors hover:bg-white/5"
+          className="mt-3 block w-full rounded-full border border-border px-6 py-3 text-center text-sm font-semibold transition-colors hover:bg-white/5"
         >
           Настройки бота
         </Link>

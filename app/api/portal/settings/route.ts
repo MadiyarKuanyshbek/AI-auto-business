@@ -35,7 +35,11 @@ export async function GET() {
   if (!sub) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  return NextResponse.json({ systemPrompt: sub.system_prompt });
+  return NextResponse.json({
+    systemPrompt: sub.system_prompt,
+    opensAt: sub.opens_at?.slice(0, 5) ?? null,
+    closesAt: sub.closes_at?.slice(0, 5) ?? null,
+  });
 }
 
 export async function POST(request: Request) {
@@ -54,13 +58,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
-  const raw =
-    typeof body === "object" && body !== null && "systemPrompt" in body
-      ? String((body as { systemPrompt: unknown }).systemPrompt)
-      : "";
+  const record = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+  const raw = "systemPrompt" in record ? String(record.systemPrompt) : "";
   const systemPrompt = raw.trim().slice(0, 2000) || null;
 
-  await sql`UPDATE subscriptions SET system_prompt = ${systemPrompt}, updated_at = now() WHERE id = ${sub.id}`;
+  const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+  function parseTime(value: unknown): string | null {
+    if (typeof value !== "string" || !TIME_RE.test(value)) return null;
+    return value;
+  }
+  const opensAt = parseTime(record.opensAt);
+  const closesAt = parseTime(record.closesAt);
+  // Часы работы задаются только парой — если одно из полей не пришло валидным,
+  // считаем, что ограничение снимается целиком (бот снова работает круглосуточно).
+  const opens = opensAt && closesAt ? opensAt : null;
+  const closes = opensAt && closesAt ? closesAt : null;
+
+  await sql`
+    UPDATE subscriptions
+    SET system_prompt = ${systemPrompt}, opens_at = ${opens}, closes_at = ${closes}, updated_at = now()
+    WHERE id = ${sub.id}
+  `;
 
   // Telegram-вебхук читает system_prompt из БД на каждое сообщение — моста
   // не нужно. Только у WhatsApp промпт кэшируется в памяти демона (VPS).

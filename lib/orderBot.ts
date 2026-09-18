@@ -20,6 +20,25 @@ function detectLanguage(text: string): OrderLanguage {
   return KZ_CHARS.test(text) ? "kz" : "ru";
 }
 
+const ALMATY_TZ = "Asia/Almaty";
+
+/** null у opens_at/closes_at = часы работы не заданы, бот всегда «открыт». */
+function isOpenNow(sub: SubscriptionRow): boolean {
+  if (!sub.opens_at || !sub.closes_at) return true;
+  const nowLabel = new Intl.DateTimeFormat("en-GB", {
+    timeZone: ALMATY_TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date());
+  const opens = sub.opens_at.slice(0, 5);
+  const closes = sub.closes_at.slice(0, 5);
+  // Часы, закрывающиеся за полночь (например 10:00–02:00), сравниваем иначе,
+  // чем обычное дневное окно.
+  if (closes < opens) return nowLabel >= opens || nowLabel < closes;
+  return nowLabel >= opens && nowLabel < closes;
+}
+
 const CANCEL_WORDS = ["отмена", "отменить", "стоп", "бас тарт", "тоқтат"];
 const MENU_WORDS = ["/menu", "меню", "мәзір"];
 const PICKUP_WORDS = ["самовывоз", "заберу", "сам заберу", "сам заеду", "өзім ал"];
@@ -37,7 +56,9 @@ function formatMenuText(menu: MenuItem[]): string {
 }
 
 function formatCart(items: OrderItem[]): string {
-  return items.map((item) => `• ${item.qty} × ${item.name} — ${(item.price * item.qty).toLocaleString("ru-RU")} ₸`).join("\n");
+  return items
+    .map((item, i) => `${i + 1}. ${item.name} — ${item.qty} шт. × ${item.price.toLocaleString("ru-RU")} ₸ = ${(item.price * item.qty).toLocaleString("ru-RU")} ₸`)
+    .join("\n");
 }
 
 function computeTotal(items: OrderItem[]): number {
@@ -58,10 +79,33 @@ function mergeCart(cart: OrderItem[], deltas: { name: string; qty: number }[], m
   return next;
 }
 
+/** removeQty отсутствует ("убрать картошку целиком") — убирает позицию
+ * полностью; если указано число ("уберите один донер") — просто уменьшает
+ * количество, удаляя строку, если дошло до нуля. */
+function removeFromCart(cart: OrderItem[], deltas: { name: string; qty?: number }[], menu: MenuItem[]): OrderItem[] {
+  let next = cart.map((item) => ({ ...item }));
+  for (const delta of deltas) {
+    if (!delta || typeof delta.name !== "string") continue;
+    const menuItem = menu.find((m) => m.name.toLowerCase() === delta.name.toLowerCase());
+    if (!menuItem) continue;
+    const existing = next.find((item) => item.name === menuItem.name);
+    if (!existing) continue;
+    if (typeof delta.qty === "number" && delta.qty > 0) {
+      existing.qty -= Math.floor(delta.qty);
+    } else {
+      existing.qty = 0;
+    }
+    if (existing.qty <= 0) next = next.filter((item) => item.name !== menuItem.name);
+  }
+  return next;
+}
+
 const T = {
   ru: {
     greeting: () =>
       `Здравствуйте! 🌯 Это Doner Mangalo.\n\nНапишите, что хотите заказать (например: «2 донера говяжьих в лаваше и картошку»). Полное меню — командой /menu.`,
+    closedNotice: (opens: string, closes: string) =>
+      `⏰ Сейчас мы не работаем (часы работы: ${opens}–${closes}). Можете оформить заказ заранее — начнём готовить, как только откроемся.\n\n`,
     menu: (menuText: string) => `📋 Меню:\n\n${menuText}\n\nНапишите, что и сколько хотите заказать.`,
     itemsAdded: (cartText: string, total: number) =>
       `Добавил в заказ:\n${cartText}\n\nИтого: ${total.toLocaleString("ru-RU")} ₸\n\nЕщё что-нибудь? Если всё — напишите «всё» или «оформляйте».`,
@@ -72,7 +116,7 @@ const T = {
       `Ваш заказ:\n${cartText}\n\nИтого: ${total.toLocaleString("ru-RU")} ₸\n\nСамовывоз или доставка? Если доставка — сразу напишите адрес.`,
     askAddress: () => `На какой адрес доставить заказ?`,
     confirm: (summary: string) => `${summary}\n\nВсё верно? Напишите «да», чтобы отправить заказ в оплату, или «нет», если нужно что-то изменить.`,
-    backToEdit: () => `Хорошо, что изменить? Напишите нужные позиции заново.`,
+    backToEdit: () => `Хорошо, что изменить? Можете добавить позиции или написать «уберите X» — уберу лишнее.`,
     paymentAsk: (requisites: string) =>
       `Отлично! Для оплаты переведите сумму на Kaspi:\n${requisites}\n\nПосле перевода пришлите, пожалуйста, скриншот чека сюда фото — и заказ сразу уйдёт на кухню.`,
     paymentReminder: () => `Жду скриншот перевода — просто пришлите его сюда фото.`,
@@ -83,6 +127,8 @@ const T = {
   kz: {
     greeting: () =>
       `Сәлеметсіз бе! 🌯 Бұл Doner Mangalo.\n\nНе тапсырыс бергіңіз келетінін жазыңыз (мысалы: «2 сиыр донер лавашта және картоп фри»). Толық мәзір — /menu.`,
+    closedNotice: (opens: string, closes: string) =>
+      `⏰ Қазір біз жұмыс істемейміз (жұмыс уақыты: ${opens}–${closes}). Алдын ала тапсырыс беруге болады — ашылған соң дайындай бастаймыз.\n\n`,
     menu: (menuText: string) => `📋 Мәзір:\n\n${menuText}\n\nНе және қанша керек екенін жазыңыз.`,
     itemsAdded: (cartText: string, total: number) =>
       `Тапсырысқа қостым:\n${cartText}\n\nБарлығы: ${total.toLocaleString("ru-RU")} ₸\n\nТағы бірдеңе керек пе? Болса — «болды» немесе «рәсімдеңіз» деп жазыңыз.`,
@@ -93,7 +139,7 @@ const T = {
       `Тапсырысыңыз:\n${cartText}\n\nБарлығы: ${total.toLocaleString("ru-RU")} ₸\n\nӨзіңіз алып кетесіз бе, әлде жеткізу керек пе? Жеткізу болса — мекенжайды жазыңыз.`,
     askAddress: () => `Қай мекенжайға жеткізу керек?`,
     confirm: (summary: string) => `${summary}\n\nБәрі дұрыс па? Төлемге жіберу үшін «иә» деп жазыңыз, өзгерту керек болса — «жоқ».`,
-    backToEdit: () => `Жарайды, нені өзгерту керек? Керекті позицияларды қайта жазыңыз.`,
+    backToEdit: () => `Жарайды, нені өзгерту керек? Позиция қосуға немесе «X-ті алып тастаңыз» деп жазуға болады.`,
     paymentAsk: (requisites: string) =>
       `Тамаша! Төлеу үшін Kaspi-ға аударыңыз:\n${requisites}\n\nАударғаннан кейін, өтінемін, чек скриншотын осында фото түрінде жіберіңіз — тапсырыс бірден дайындалуға кетеді.`,
     paymentReminder: () => `Аударым скриншотын күтіп тұрмын — осында фото жіберіңіз.`,
@@ -103,29 +149,36 @@ const T = {
   },
 };
 
-type ParsedOrder = { items: { name: string; qty: number }[]; finished: boolean; unclear: boolean };
+type ParsedOrder = {
+  items: { name: string; qty: number }[];
+  removeItems: { name: string; qty?: number }[];
+  finished: boolean;
+  unclear: boolean;
+};
 
 async function extractOrderItems(menu: MenuItem[], userMessage: string): Promise<ParsedOrder | null> {
-  const prompt = `Ты — ассистент, который разбирает сообщение клиента точки быстрого питания и определяет, какие позиции меню и в каком количестве он хочет заказать.
+  const prompt = `Ты — ассистент, который разбирает сообщение клиента точки быстрого питания и определяет, какие позиции меню он хочет добавить или убрать из заказа.
 
 Меню (точные названия и цены в тенге):
 ${formatMenuText(menu)}
 
 Правила:
-- Перечисли В ПОЛНОМ ОБЪЁМЕ все позиции, упомянутые в сообщении, — не пропускай ни одной, даже если их несколько.
-- В поле "items" перечисли только те позиции, которые есть в меню выше, используя ТОЧНОЕ название из списка (символ в символ).
+- В поле "items" перечисли позиции, которые клиент хочет ДОБАВИТЬ, в поле "removeItems" — которые хочет УБРАТЬ или уменьшить в количестве (например: "уберите картошку", "без сыра", "один донер лишний, уберите").
+- В обоих полях используй ТОЧНОЕ название позиции из меню выше (символ в символ). Не пропускай ни одной упомянутой позиции.
 - Будь ОСОБЕННО внимателен к виду мяса — "говяжий", "куриный" и "ассорти" это РАЗНЫЕ позиции, не путай их между собой.
-- Если количество явно не указано — считай его равным 1.
+- В "items" если количество явно не указано — считай его равным 1. В "removeItems" поле "qty" указывай, ТОЛЬКО если клиент явно назвал число, на которое убавить; если он хочет убрать позицию целиком — просто не указывай "qty" совсем.
 - Если клиент говорит, что закончил заказ ("всё", "это всё", "больше ничего", "оформляйте", "хватит", "давай оформляй", "болды") — поставь "finished": true.
-- Если упомянутое блюдо не удаётся уверенно сопоставить ни с одной позицией меню — не добавляй его в items и поставь "unclear": true.
-- Если сообщение вообще не про заказ (приветствие, вопрос и т.п.) — верни пустой items, finished:false, unclear:false.
+- Если упомянутое блюдо не удаётся уверенно сопоставить ни с одной позицией меню — не добавляй его ни в items, ни в removeItems, и поставь "unclear": true.
+- Если сообщение вообще не про заказ (приветствие, вопрос и т.п.) — верни пустые items/removeItems, finished:false, unclear:false.
 
-Пример:
+Примеры:
 Сообщение: "2 донера куриных в лаваше и картошку фри"
-Ответ: {"items": [{"name": "Донер куриный в лаваше", "qty": 2}, {"name": "Картофель фри с соусом", "qty": 1}], "finished": false, "unclear": false}
+Ответ: {"items": [{"name": "Донер куриный в лаваше", "qty": 2}, {"name": "Картофель фри с соусом", "qty": 1}], "removeItems": [], "finished": false, "unclear": false}
+Сообщение: "уберите картошку, и один донер лишний"
+Ответ: {"items": [], "removeItems": [{"name": "Картофель фри с соусом"}, {"name": "Донер куриный в лаваше", "qty": 1}], "finished": false, "unclear": false}
 
-Ответь СТРОГО в формате JSON без пояснений, всегда включай поле "items" (пустой массив [], если позиций нет):
-{"items": [{"name": "точное название из меню", "qty": число}], "finished": boolean, "unclear": boolean}`;
+Ответь СТРОГО в формате JSON без пояснений, всегда включай оба поля (пустой массив [], если позиций нет):
+{"items": [{"name": "точное название из меню", "qty": число}], "removeItems": [{"name": "точное название из меню", "qty": число}], "finished": boolean, "unclear": boolean}`;
 
   // Не даём вебхуку зависнуть дольше таймаута Telegram — если Gemini не
   // успела за 25с, просим клиента повторить, а не молчим до 30с maxDuration.
@@ -139,6 +192,7 @@ ${formatMenuText(menu)}
   // не даём этому уронить обработчик, просто нормализуем к безопасному виду.
   return {
     items: Array.isArray(raw.items) ? raw.items : [],
+    removeItems: Array.isArray(raw.removeItems) ? raw.removeItems : [],
     finished: raw.finished === true,
     unclear: raw.unclear === true,
   };
@@ -206,7 +260,11 @@ export async function processOrderMessage(sub: SubscriptionRow, message: Incomin
   const menu = sub.menu_items;
 
   if (isNew && !message.photoFileId) {
-    await reply(sub, message.chatId, t.greeting());
+    const closedPrefix =
+      !isOpenNow(sub) && sub.opens_at && sub.closes_at
+        ? t.closedNotice(sub.opens_at.slice(0, 5), sub.closes_at.slice(0, 5))
+        : "";
+    await reply(sub, message.chatId, closedPrefix + t.greeting());
     if (!text || matchesAny(lowerText, MENU_WORDS)) return;
   }
 
@@ -237,6 +295,10 @@ export async function processOrderMessage(sub: SubscriptionRow, message: Incomin
     if (parsed.items.length > 0) {
       order.items = mergeCart(order.items, parsed.items, menu);
     }
+    if (parsed.removeItems.length > 0) {
+      order.items = removeFromCart(order.items, parsed.removeItems, menu);
+    }
+    const cartChanged = parsed.items.length > 0 || parsed.removeItems.length > 0;
 
     if (parsed.finished) {
       if (order.items.length === 0) {
@@ -249,8 +311,12 @@ export async function processOrderMessage(sub: SubscriptionRow, message: Incomin
       return;
     }
 
-    if (parsed.items.length > 0) {
+    if (cartChanged) {
       await saveOrder(order);
+      if (order.items.length === 0) {
+        await reply(sub, message.chatId, t.emptyCartFinish());
+        return;
+      }
       await reply(sub, message.chatId, t.itemsAdded(formatCart(order.items), computeTotal(order.items)));
       return;
     }
@@ -365,7 +431,7 @@ function buildSummary(order: TelegramOrderRow, sub: SubscriptionRow): string {
   const total = computeTotal(order.items);
   const deliveryText =
     order.delivery_type === "delivery" ? `🚚 Доставка: ${order.address}` : `🏃 Самовывоз из ${sub.business_name}`;
-  return `Ваш заказ:\n${cartText}\n\n${deliveryText}\n\nИтого: ${total.toLocaleString("ru-RU")} ₸`;
+  return `🧾 Проверьте, пожалуйста, заказ:\n\n${cartText}\n\n${deliveryText}\n\n💰 Итого: ${total.toLocaleString("ru-RU")} ₸`;
 }
 
 function buildOwnerNotification(order: TelegramOrderRow, sub: SubscriptionRow): string {

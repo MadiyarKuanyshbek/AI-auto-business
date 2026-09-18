@@ -1,6 +1,23 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { notifyOwner } from "@/lib/telegram";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? "");
+
+// Троттлинг на уровне памяти процесса (не БД — не хотим лишний запрос на
+// каждый сбой): при холодном старте серверлес-функции просто снова прозвонит
+// один раз, это не страшно. Цель — не заспамить владельца тем же алертом.
+let lastQuotaAlertAt = 0;
+const QUOTA_ALERT_THROTTLE_MS = 30 * 60 * 1000;
+
+function alertOwnerOnQuotaExhaustion(primaryErr: unknown, fallbackErr: unknown) {
+  if (!isDailyQuotaExhausted(primaryErr) && !isDailyQuotaExhausted(fallbackErr)) return;
+  const now = Date.now();
+  if (now - lastQuotaAlertAt < QUOTA_ALERT_THROTTLE_MS) return;
+  lastQuotaAlertAt = now;
+  void notifyOwner(
+    "🚨 Обе модели Gemini (основная и резервная) отказали подряд — похоже, кончилась бесплатная квота API на сегодня. Боты отвечают заглушкой вместо ИИ, пока квота не обновится или не подключите платный тир.",
+  );
+}
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -67,6 +84,7 @@ export async function generateAiReply(prompt: string, userMessage: string) {
       return await tryModel(FALLBACK_MODEL, prompt, userMessage, false);
     } catch (fallbackErr) {
       console.error(`Fallback model (${FALLBACK_MODEL}) also failed:`, fallbackErr);
+      alertOwnerOnQuotaExhaustion(primaryErr, fallbackErr);
       return FALLBACK_REPLY;
     }
   }
@@ -88,6 +106,7 @@ export async function generateJsonReply<T>(prompt: string, userMessage: string):
         return await tryModel(FALLBACK_MODEL, prompt, userMessage, true);
       } catch (fallbackErr) {
         console.error(`Fallback model (${FALLBACK_MODEL}) also failed (json):`, fallbackErr);
+        alertOwnerOnQuotaExhaustion(primaryErr, fallbackErr);
         return null;
       }
     }

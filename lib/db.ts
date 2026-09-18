@@ -92,6 +92,8 @@ export type SubscriptionRow = {
   telegram_owner_chat_id: number | null;
   menu_items: MenuItem[] | null;
   kaspi_requisites: string | null;
+  opens_at: string | null;
+  closes_at: string | null;
   created_at: string;
   updated_at: string;
 };

@@ -53,3 +53,38 @@ export async function verifyPortalSessionToken(token: string | undefined, secret
   const subscriptionId = Number(idStr);
   return Number.isInteger(subscriptionId) ? subscriptionId : null;
 }
+
+// Пароль личного кабинета — запасной вход, который работает сразу после
+// регистрации, не дожидаясь привязки Telegram/WhatsApp (OTP до этого
+// момента отправить некуда). PBKDF2 через Web Crypto — без внешних
+// зависимостей вроде bcrypt, работает и в Node, и в Edge-рантайме.
+const PBKDF2_ITERATIONS = 100_000;
+
+async function derivePasswordBits(password: string, salt: Uint8Array): Promise<ArrayBuffer> {
+  const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+  return crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: salt as BufferSource, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
+    keyMaterial,
+    256,
+  );
+}
+
+/** Возвращает строку "соль.хэш" (обе части base64url) для хранения в БД. */
+export async function hashPortalPassword(password: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const bits = await derivePasswordBits(password, salt);
+  return `${toBase64Url(salt.buffer)}.${toBase64Url(bits)}`;
+}
+
+export async function verifyPortalPassword(password: string, stored: string | null): Promise<boolean> {
+  if (!stored) return false;
+  const [saltB64, hashB64] = stored.split(".");
+  if (!saltB64 || !hashB64) return false;
+
+  const saltBinary = atob(saltB64.replace(/-/g, "+").replace(/_/g, "/"));
+  const salt = new Uint8Array(saltBinary.length);
+  for (let i = 0; i < saltBinary.length; i++) salt[i] = saltBinary.charCodeAt(i);
+
+  const bits = await derivePasswordBits(password, salt);
+  return timingSafeEqual(toBase64Url(bits), hashB64);
+}

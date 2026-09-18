@@ -14,22 +14,37 @@ export default function PromptSettingsForm({
   const [value, setValue] = useState(initialPrompt ?? "");
   const [opensAt, setOpensAt] = useState(initialOpensAt);
   const [closesAt, setClosesAt] = useState(initialClosesAt);
+  const [newPassword, setNewPassword] = useState("");
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState("");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (newPassword && newPassword.length < 4) {
+      setStatus("error");
+      setErrorMessage("Новый пароль — минимум 4 символа.");
+      return;
+    }
     setStatus("saving");
+    setErrorMessage("");
     try {
       const response = await fetch("/api/portal/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ systemPrompt: value, opensAt: opensAt || null, closesAt: closesAt || null }),
+        body: JSON.stringify({
+          systemPrompt: value,
+          opensAt: opensAt || null,
+          closesAt: closesAt || null,
+          newPassword: newPassword || undefined,
+        }),
       });
       if (!response.ok) throw new Error("failed");
+      setNewPassword("");
       setStatus("saved");
       setTimeout(() => setStatus("idle"), 2000);
     } catch {
       setStatus("error");
+      setErrorMessage("Не удалось сохранить");
     }
   }
 
@@ -87,6 +102,20 @@ export default function PromptSettingsForm({
         </p>
       </div>
 
+      <div className="space-y-3">
+        <label htmlFor="newPassword" className="block text-sm font-medium">
+          Сменить пароль входа
+        </label>
+        <input
+          id="newPassword"
+          type="password"
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+          placeholder="Новый пароль — оставьте пустым, если не меняете"
+          className="w-full rounded-lg border border-border bg-white/5 px-4 py-2.5 text-sm text-foreground outline-none focus:border-accent"
+        />
+      </div>
+
       <div className="flex items-center gap-3">
         <button
           type="submit"
@@ -96,7 +125,7 @@ export default function PromptSettingsForm({
           {status === "saving" ? "Сохраняем..." : "Сохранить"}
         </button>
         {status === "saved" && <span className="text-sm text-emerald-500">Сохранено</span>}
-        {status === "error" && <span className="text-sm text-red-400">Не удалось сохранить</span>}
+        {status === "error" && <span className="text-sm text-red-400">{errorMessage}</span>}
       </div>
     </form>
   );

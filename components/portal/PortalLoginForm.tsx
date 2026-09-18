@@ -5,17 +5,45 @@ import { useRouter } from "next/navigation";
 import { isValidPhone } from "@/lib/phone";
 
 type Step = "phone" | "code";
+type Mode = "code" | "password";
 type Status = "idle" | "submitting" | "error";
 
 export default function PortalLoginForm() {
   const router = useRouter();
+  const [mode, setMode] = useState<Mode>("password");
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [remember, setRemember] = useState(true);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
+
+  async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!isValidPhone(phone)) {
+      setStatus("error");
+      setError("Похоже, это не номер телефона. Укажите с кодом страны, например +7 700 000 00 00.");
+      return;
+    }
+
+    setStatus("submitting");
+    setError("");
+    try {
+      const response = await fetch("/api/portal/login-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, password, remember }),
+      });
+      if (!response.ok) throw new Error("invalid_credentials");
+      router.push("/portal");
+      router.refresh();
+    } catch {
+      setStatus("error");
+      setError("Неверный номер или пароль.");
+    }
+  }
 
   async function handlePhoneSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -50,7 +78,7 @@ export default function PortalLoginForm() {
         code === "bot_offline"
           ? "Бот сейчас не в сети, код отправить не удалось. Попробуйте чуть позже."
           : code === "telegram_not_linked"
-            ? "Сначала привяжите Telegram-аккаунт — откройте бота по кнопке ниже и нажмите «Start»."
+            ? "Сначала привяжите Telegram-аккаунт — откройте бота по кнопке ниже и нажмите «Start» (или войдите по паролю)."
             : "Не получилось отправить код. Проверьте номер и попробуйте ещё раз.",
       );
     }
@@ -132,42 +160,101 @@ export default function PortalLoginForm() {
   }
 
   return (
-    <form onSubmit={handlePhoneSubmit} className="space-y-4">
-      <div>
-        <label htmlFor="phone" className="block text-sm font-medium">
-          Номер, который вы указали при подключении бота
-        </label>
-        <input
-          id="phone"
-          type="tel"
-          inputMode="tel"
-          placeholder="+7 700 000 00 00"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          required
-          className="mt-1 w-full rounded-lg border border-border bg-white/5 px-4 py-2.5 text-sm text-foreground outline-none focus:border-accent"
-        />
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-2 rounded-full border border-border bg-white/5 p-1">
+        <button
+          type="button"
+          onClick={() => {
+            setMode("password");
+            setError("");
+            setLinkUrl("");
+          }}
+          className={`rounded-full px-3 py-2 text-xs font-semibold transition-colors sm:text-sm ${
+            mode === "password" ? "bg-accent text-accent-foreground" : "text-muted hover:text-foreground"
+          }`}
+        >
+          По паролю
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setMode("code");
+            setError("");
+            setLinkUrl("");
+          }}
+          className={`rounded-full px-3 py-2 text-xs font-semibold transition-colors sm:text-sm ${
+            mode === "code" ? "bg-accent text-accent-foreground" : "text-muted hover:text-foreground"
+          }`}
+        >
+          По коду в мессенджере
+        </button>
       </div>
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
-      {linkUrl && (
-        <a
-          href={linkUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block w-full rounded-full border border-accent/50 bg-accent/10 px-6 py-3 text-center text-sm font-semibold text-accent transition-colors hover:bg-accent/20"
-        >
-          Открыть бота и привязать аккаунт
-        </a>
-      )}
+      <form onSubmit={mode === "password" ? handlePasswordSubmit : handlePhoneSubmit} className="space-y-4">
+        <div>
+          <label htmlFor="phone" className="block text-sm font-medium">
+            Номер, который вы указали при подключении бота
+          </label>
+          <input
+            id="phone"
+            type="tel"
+            inputMode="tel"
+            placeholder="+7 700 000 00 00"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            required
+            className="mt-1 w-full rounded-lg border border-border bg-white/5 px-4 py-2.5 text-sm text-foreground outline-none focus:border-accent"
+          />
+        </div>
 
-      <button
-        type="submit"
-        disabled={status === "submitting"}
-        className="w-full rounded-full bg-accent px-6 py-3 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent/90 disabled:opacity-60"
-      >
-        {status === "submitting" ? "Отправляем код..." : "Получить код"}
-      </button>
-    </form>
+        {mode === "password" && (
+          <div>
+            <label htmlFor="password" className="block text-sm font-medium">
+              Пароль
+            </label>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="mt-1 w-full rounded-lg border border-border bg-white/5 px-4 py-2.5 text-sm text-foreground outline-none focus:border-accent"
+            />
+          </div>
+        )}
+
+        {mode === "password" && (
+          <label className="flex items-center gap-2 text-sm text-muted">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+              className="h-4 w-4 rounded border-border accent-accent"
+            />
+            Запомнить меня на этом устройстве (90 дней)
+          </label>
+        )}
+
+        {error && <p className="text-sm text-red-400">{error}</p>}
+        {linkUrl && (
+          <a
+            href={linkUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block w-full rounded-full border border-accent/50 bg-accent/10 px-6 py-3 text-center text-sm font-semibold text-accent transition-colors hover:bg-accent/20"
+          >
+            Открыть бота и привязать аккаунт
+          </a>
+        )}
+
+        <button
+          type="submit"
+          disabled={status === "submitting"}
+          className="w-full rounded-full bg-accent px-6 py-3 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent/90 disabled:opacity-60"
+        >
+          {status === "submitting" ? "Входим..." : mode === "password" ? "Войти" : "Получить код"}
+        </button>
+      </form>
+    </div>
   );
 }

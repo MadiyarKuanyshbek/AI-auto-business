@@ -216,6 +216,12 @@ async function main() {
   // от кого именно пришли деньги, если несколько заказов идут одновременно.
   await sql`ALTER TABLE telegram_orders ADD COLUMN IF NOT EXISTS payer_name TEXT`;
 
+  // Пароль для входа в личный кабинет — запасной способ входа, не зависящий
+  // от привязки Telegram/WhatsApp (OTP-код не может прийти, пока бот не
+  // привязан, а пароль работает сразу после регистрации). Хранится не в
+  // открытом виде, а PBKDF2-хэш "соль.хэш" (см. lib/portalAuth.ts).
+  await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS portal_password_hash TEXT`;
+
   console.log("Готово: таблицы leads, businesses, group_leads, telegram_sessions, system_status, subscriptions, subscription_payments, telegram_orders существуют и обновлены.");
 }
 

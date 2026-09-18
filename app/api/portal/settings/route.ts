@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { sql, type SubscriptionRow } from "@/lib/db";
-import { verifyPortalSessionToken } from "@/lib/portalAuth";
+import { verifyPortalSessionToken, hashPortalPassword } from "@/lib/portalAuth";
 
 async function requireSubscription(): Promise<SubscriptionRow | null> {
   const secret = process.env.PORTAL_SESSION_SECRET;
@@ -74,11 +74,25 @@ export async function POST(request: Request) {
   const opens = opensAt && closesAt ? opensAt : null;
   const closes = opensAt && closesAt ? closesAt : null;
 
-  await sql`
-    UPDATE subscriptions
-    SET system_prompt = ${systemPrompt}, opens_at = ${opens}, closes_at = ${closes}, updated_at = now()
-    WHERE id = ${sub.id}
-  `;
+  const newPassword = typeof record.newPassword === "string" ? record.newPassword.trim() : "";
+  if (newPassword && newPassword.length < 4) {
+    return NextResponse.json({ error: "password_too_short" }, { status: 400 });
+  }
+
+  if (newPassword) {
+    const passwordHash = await hashPortalPassword(newPassword);
+    await sql`
+      UPDATE subscriptions
+      SET system_prompt = ${systemPrompt}, opens_at = ${opens}, closes_at = ${closes}, portal_password_hash = ${passwordHash}, updated_at = now()
+      WHERE id = ${sub.id}
+    `;
+  } else {
+    await sql`
+      UPDATE subscriptions
+      SET system_prompt = ${systemPrompt}, opens_at = ${opens}, closes_at = ${closes}, updated_at = now()
+      WHERE id = ${sub.id}
+    `;
+  }
 
   // Telegram-вебхук читает system_prompt из БД на каждое сообщение — моста
   // не нужно. Только у WhatsApp промпт кэшируется в памяти демона (VPS).

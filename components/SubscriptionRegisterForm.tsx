@@ -28,6 +28,7 @@ export default function SubscriptionRegisterForm({
     const businessName = (form.elements.namedItem("businessName") as HTMLInputElement).value.trim();
     const contactName = (form.elements.namedItem("contactName") as HTMLInputElement).value.trim();
     const contactPhone = (form.elements.namedItem("contactPhone") as HTMLInputElement).value.trim();
+    const portalPassword = (form.elements.namedItem("portalPassword") as HTMLInputElement).value;
 
     if (!businessName || !contactName || !contactPhone) {
       setStatus("error");
@@ -39,13 +40,26 @@ export default function SubscriptionRegisterForm({
       setErrorMessage("Похоже, это не номер телефона. Укажите с кодом страны, например +7 700 000 00 00.");
       return;
     }
+    if (portalPassword.length < 4) {
+      setStatus("error");
+      setErrorMessage("Пароль для личного кабинета — минимум 4 символа.");
+      return;
+    }
 
     let payload: Record<string, unknown>;
     let endpoint: string;
 
     if (channel === "whatsapp") {
       const contactTelegram = (form.elements.namedItem("contactTelegram") as HTMLInputElement).value.trim();
-      payload = { productId, businessSlug, businessName, contactName, contactPhone, contactTelegram: contactTelegram || undefined };
+      payload = {
+        productId,
+        businessSlug,
+        businessName,
+        contactName,
+        contactPhone,
+        contactTelegram: contactTelegram || undefined,
+        portalPassword,
+      };
       endpoint = "/api/subscriptions";
     } else {
       const botToken = (form.elements.namedItem("botToken") as HTMLInputElement).value.trim();
@@ -54,7 +68,7 @@ export default function SubscriptionRegisterForm({
         setErrorMessage("Вставьте токен бота, который дал @BotFather.");
         return;
       }
-      payload = { productId, businessSlug, businessName, contactName, contactPhone, botToken };
+      payload = { productId, businessSlug, businessName, contactName, contactPhone, botToken, portalPassword };
       endpoint = "/api/subscriptions/telegram";
     }
 
@@ -189,6 +203,23 @@ export default function SubscriptionRegisterForm({
           </p>
         </div>
       )}
+
+      <div>
+        <label htmlFor="portalPassword" className="block text-sm font-medium">
+          Пароль для личного кабинета
+        </label>
+        <input
+          id="portalPassword"
+          name="portalPassword"
+          type="password"
+          minLength={4}
+          required
+          className="mt-1 w-full rounded-lg border border-border bg-white/5 px-4 py-2.5 text-sm text-foreground outline-none focus:border-accent"
+        />
+        <p className="mt-1 text-xs text-muted">
+          Вход по номеру телефона + этот пароль — работает сразу, без ожидания кода в мессенджере.
+        </p>
+      </div>
 
       {status === "error" && <p className="text-sm text-red-400">{errorMessage}</p>}
 

@@ -4,6 +4,7 @@ import { normalizePhone } from "@/lib/phone";
 import { products } from "@/lib/products";
 import { getBotInfo, registerBotCommands, registerWebhook } from "@/lib/telegramClientBot";
 import { SITE_URL } from "@/lib/siteUrl";
+import { hashPortalPassword } from "@/lib/portalAuth";
 
 type TelegramSubscriptionPayload = {
   productId: string;
@@ -12,6 +13,7 @@ type TelegramSubscriptionPayload = {
   contactName: string;
   contactPhone: string;
   botToken: string;
+  portalPassword: string;
 };
 
 function isValidPayload(value: unknown): value is TelegramSubscriptionPayload {
@@ -27,7 +29,9 @@ function isValidPayload(value: unknown): value is TelegramSubscriptionPayload {
     record.contactName.trim().length > 0 &&
     typeof record.contactPhone === "string" &&
     typeof record.botToken === "string" &&
-    record.botToken.trim().length > 0
+    record.botToken.trim().length > 0 &&
+    typeof record.portalPassword === "string" &&
+    record.portalPassword.trim().length >= 4
   );
 }
 
@@ -70,17 +74,18 @@ export async function POST(request: Request) {
   // INSERT, временный плейсхолдер защищает от коллизии двух параллельных заявок.
   const placeholderOwnerId = `pending_${crypto.randomUUID()}`;
   const webhookSecret = crypto.randomUUID().replace(/-/g, "");
+  const portalPasswordHash = await hashPortalPassword(body.portalPassword.trim());
 
   const [row] = await sql`
     INSERT INTO subscriptions (
       owner_id, product_id, business_slug, business_name, contact_name,
       contact_phone, price_kzt, status, channel,
-      telegram_bot_token, telegram_bot_username, telegram_webhook_secret
+      telegram_bot_token, telegram_bot_username, telegram_webhook_secret, portal_password_hash
     )
     VALUES (
       ${placeholderOwnerId}, ${product.id}, ${body.businessSlug ?? null}, ${body.businessName.trim()}, ${body.contactName.trim()},
       ${phoneDigits}, 0, 'active', 'telegram',
-      ${botToken}, ${botInfo.username}, ${webhookSecret}
+      ${botToken}, ${botInfo.username}, ${webhookSecret}, ${portalPasswordHash}
     )
     RETURNING id
   `;

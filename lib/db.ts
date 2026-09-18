@@ -94,6 +94,7 @@ export type SubscriptionRow = {
   kaspi_requisites: string | null;
   opens_at: string | null;
   closes_at: string | null;
+  portal_password_hash: string | null;
   created_at: string;
   updated_at: string;
 };

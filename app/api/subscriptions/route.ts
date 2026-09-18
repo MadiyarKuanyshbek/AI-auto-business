@@ -3,6 +3,7 @@ import { sql } from "@/lib/db";
 import { normalizePhone } from "@/lib/phone";
 import { products } from "@/lib/products";
 import { getSubscriptionPrice } from "@/lib/subscriptionPricing";
+import { hashPortalPassword } from "@/lib/portalAuth";
 
 type SubscriptionPayload = {
   productId: string;
@@ -11,6 +12,7 @@ type SubscriptionPayload = {
   contactName: string;
   contactPhone: string;
   contactTelegram?: string;
+  portalPassword: string;
 };
 
 function isValidPayload(value: unknown): value is SubscriptionPayload {
@@ -25,7 +27,9 @@ function isValidPayload(value: unknown): value is SubscriptionPayload {
     typeof record.contactName === "string" &&
     record.contactName.trim().length > 0 &&
     typeof record.contactPhone === "string" &&
-    (record.contactTelegram === undefined || typeof record.contactTelegram === "string")
+    (record.contactTelegram === undefined || typeof record.contactTelegram === "string") &&
+    typeof record.portalPassword === "string" &&
+    record.portalPassword.trim().length >= 4
   );
 }
 
@@ -68,15 +72,16 @@ export async function POST(request: Request) {
   // только после INSERT — временно пишем случайный плейсхолдер, чтобы два
   // параллельных запроса не столкнулись на одинаковом значении.
   const placeholderOwnerId = `pending_${crypto.randomUUID()}`;
+  const portalPasswordHash = await hashPortalPassword(body.portalPassword.trim());
 
   const [row] = await sql`
     INSERT INTO subscriptions (
       owner_id, product_id, business_slug, business_name, contact_name,
-      contact_phone, contact_telegram, price_kzt
+      contact_phone, contact_telegram, price_kzt, portal_password_hash
     )
     VALUES (
       ${placeholderOwnerId}, ${product.id}, ${body.businessSlug ?? null}, ${body.businessName.trim()}, ${body.contactName.trim()},
-      ${phoneDigits}, ${body.contactTelegram?.trim() || null}, ${price}
+      ${phoneDigits}, ${body.contactTelegram?.trim() || null}, ${price}, ${portalPasswordHash}
     )
     RETURNING id
   `;

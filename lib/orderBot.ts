@@ -1,12 +1,10 @@
 import { sql, type MenuItem, type OrderItem, type OrderLanguage, type PaymentFileKind, type SubscriptionRow, type TelegramOrderRow } from "@/lib/db";
 import { sendTelegramMessageAs, sendTelegramPhotoAs, sendTelegramDocumentAs, notifyOwner } from "@/lib/telegram";
 import { generateJsonReply } from "@/src/gemini";
-import { SITE_URL } from "@/lib/siteUrl";
 
 // Фото реального меню (см. public/menu) — отправляются вместе с текстовым
 // списком, чтобы клиенту было наглядно. Пока общие для всех подписок; когда
 // появится самостоятельная загрузка меню клиентом, путь переедет в БД.
-const MENU_PHOTO_URLS = [`${SITE_URL}/menu/page1.jpg`, `${SITE_URL}/menu/page2.jpg`];
 
 /** Не "самообучение" (боевой бот не должен сам переписывать себе промпт —
  * ненадёжно и небезопасно), а журнал моментов, где бот реально не понял
@@ -123,8 +121,8 @@ function removeFromCart(cart: OrderItem[], deltas: { name: string; qty?: number 
 
 const T = {
   ru: {
-    greeting: () =>
-      `Здравствуйте! 🌯 Это Doner Mangalo.\n\nНапишите, что хотите заказать (например: «2 донера говяжьих в лаваше и картошку»). Полное меню — командой /menu.`,
+    greeting: (name: string) =>
+      `Здравствуйте! Это ${name}.\n\nНапишите, что хотите заказать (например: «2 позиции из меню и напиток»). Полное меню — командой /menu.`,
     closedNotice: (opens: string, closes: string) =>
       `⏰ Сейчас мы не работаем (часы работы: ${opens}–${closes}). Можете оформить заказ заранее — начнём готовить, как только откроемся.\n\n`,
     menu: (menuText: string) => `📋 Меню:\n\n${menuText}\n\nНапишите, что и сколько хотите заказать.`,
@@ -153,8 +151,8 @@ const T = {
     fallback: () => `Извините, не совсем понял 🙏 Напишите /menu чтобы увидеть меню, или опишите заказ подробнее.`,
   },
   kz: {
-    greeting: () =>
-      `Сәлеметсіз бе! 🌯 Бұл Doner Mangalo.\n\nНе тапсырыс бергіңіз келетінін жазыңыз (мысалы: «2 сиыр донер лавашта және картоп фри»). Толық мәзір — /menu.`,
+    greeting: (name: string) =>
+      `Сәлеметсіз бе! Бұл ${name}.\n\nНе тапсырыс бергіңіз келетінін жазыңыз (мысалы: «мәзірден 2 позиция және сусын»). Толық мәзір — /menu.`,
     closedNotice: (opens: string, closes: string) =>
       `⏰ Қазір біз жұмыс істемейміз (жұмыс уақыты: ${opens}–${closes}). Алдын ала тапсырыс беруге болады — ашылған соң дайындай бастаймыз.\n\n`,
     menu: (menuText: string) => `📋 Мәзір:\n\n${menuText}\n\nНе және қанша керек екенін жазыңыз.`,
@@ -163,7 +161,7 @@ const T = {
     unclearItem: (menuText: string) =>
       `Мұндай тағамды мәзірден таппадым 🤔 Мәзір:\n\n${menuText}\n\nАтауын нақтырақ жазыңыз.`,
     unclearNote: () =>
-      `\n\n⚠️ Хабарламаның бір бөлігін мәзір позициясы ретінде таба алмадым (сусындар мен десерттерді бот әзірге қабылдамайды — тапсырысты алғанда Саидадан сұрауға болады). Негізгі мәзірден тағы бірдеңе қосу керек болса — /menu жазыңыз.`,
+      `\n\n⚠️ Хабарламаның бір бөлігін мәзір позициясы ретінде таба алмадым (сусындар мен десерттерді бот әзірге қабылдамайды — тапсырысты рәсімдегенде иесінен сұрауға болады). Негізгі мәзірден тағы бірдеңе қосу керек болса — /menu жазыңыз.`,
     emptyCartFinish: () => `Тапсырыс әлі бос сияқты. Не тапсырасыз?`,
     askDelivery: (cartText: string, total: number) =>
       `Тапсырысыңыз:\n${cartText}\n\nБарлығы: ${total.toLocaleString("ru-RU")} ₸\n\nӨзіңіз алып кетесіз бе, әлде жеткізу керек пе? Жеткізу болса — мекенжайды жазыңыз.`,
@@ -332,10 +330,8 @@ async function reply(sub: SubscriptionRow, chatId: number, text: string) {
   await sendTelegramMessageAs(sub.telegram_bot_token!, chatId, text, { replyKeyboard: REPLY_KEYBOARD });
 }
 
-async function sendMenuPhotos(sub: SubscriptionRow, chatId: number) {
-  for (const url of MENU_PHOTO_URLS) {
-    await sendTelegramPhotoAs(sub.telegram_bot_token!, chatId, url, "");
-  }
+async function sendMenuPhotos(_sub: SubscriptionRow, _chatId: number) {
+  // Фото меню не используются: меню отправляется текстом.
 }
 
 export async function processOrderMessage(sub: SubscriptionRow, message: IncomingMessage) {
@@ -365,7 +361,7 @@ export async function processOrderMessage(sub: SubscriptionRow, message: Incomin
     // повторное приветствие. Часы работы (если закрыто) упомянутся один раз
     // либо тут, либо в самом ответе с меню — не дублируем.
     if (!isMenuRequest) {
-      await reply(sub, message.chatId, closedNote() + t.greeting());
+      await reply(sub, message.chatId, closedNote() + t.greeting(sub.business_name));
     }
     if (!text) return;
   }

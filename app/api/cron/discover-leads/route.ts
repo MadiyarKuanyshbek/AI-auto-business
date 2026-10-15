@@ -3,6 +3,7 @@ import { isAuthorizedCronRequest } from "@/lib/cronAuth";
 import { sql } from "@/lib/db";
 import { escapeHtml, notifyOwner } from "@/lib/telegram";
 import { SITE_URL } from "@/lib/siteUrl";
+import { normalizePhone } from "@/lib/phone";
 
 export const maxDuration = 60;
 
@@ -49,15 +50,28 @@ type GisItem = {
   address_name?: string;
   rubrics?: { name?: string }[];
   reviews?: { general_rating?: string; general_review_count?: number };
+  contact_groups?: { contacts?: { type?: string; value?: string; text?: string }[] }[];
 };
 
-async function fetch2gis(query: string, city: string, apiKey: string): Promise<GisItem[]> {
+/** Первый мобильный (7xx…) номер из карточки 2GIS — только такие подходят для WhatsApp. */
+function pickMobilePhone(item: GisItem): string {
+  for (const group of item.contact_groups ?? []) {
+    for (const contact of group.contacts ?? []) {
+      if (contact.type !== "phone") continue;
+      const digits = normalizePhone(contact.value ?? contact.text ?? "");
+      if (digits && /^77\d{9}$/.test(digits)) return digits;
+    }
+  }
+  return "";
+}
+
+async function fetch2gis(query: string, city: string, apiKey: string, page: number): Promise<GisItem[]> {
   const url = new URL("https://catalog.api.2gis.com/3.0/items");
   url.searchParams.set("q", `${query}, ${city}`);
   url.searchParams.set("key", apiKey);
-  url.searchParams.set("page", "1");
+  url.searchParams.set("page", String(page));
   url.searchParams.set("page_size", String(PAGE_SIZE));
-  url.searchParams.set("fields", "items.reviews,items.rubrics,items.address_name,items.point");
+  url.searchParams.set("fields", "items.reviews,items.rubrics,items.address_name,items.point,items.contact_groups");
 
   const response = await fetch(url);
   const data = await response.json();
@@ -105,15 +119,20 @@ export async function GET(request: Request) {
     .map((n) => n.trim())
     .filter((n) => QUERY_MAP[n]);
 
+  // Cron идёт каждый день — листаем выдачу 2GIS по кругу (страницы 1–10), иначе
+  // каждый запуск возвращал бы одних и тех же уже известных бизнесов.
+  const dayNumber = Math.floor(new Date().getTime() / 86_400_000);
+  const page = (dayNumber % 10) + 1;
+
   const knownCardUrls = await loadKnownCardUrls();
-  const found: { name: string; niche: string; city: string; cardUrl: string; score: number; pitch: string }[] = [];
+  const found: { name: string; niche: string; city: string; cardUrl: string; score: number; pitch: string; phone: string }[] = [];
 
   for (const niche of niches) {
     const query = QUERY_MAP[niche];
     for (const city of cities) {
       let items: GisItem[];
       try {
-        items = await fetch2gis(query, city, apiKey);
+        items = await fetch2gis(query, city, apiKey, page);
       } catch (error) {
         console.error(`2GIS ${niche}/${city} failed:`, error instanceof Error ? error.message : error);
         continue;
@@ -138,12 +157,13 @@ export async function GET(request: Request) {
           cardUrl,
           score,
           pitch: buildPitch(item, niche),
+          phone: pickMobilePhone(item),
         });
 
         try {
           await sql`
-            INSERT INTO businesses (name, industry, city, address, card_url, score, qualified, pitch)
-            VALUES (${item.name || ""}, ${item.rubrics?.[0]?.name || query}, ${city}, ${item.address_name || ""}, ${cardUrl}, ${score}, false, ${buildPitch(item, niche)})
+            INSERT INTO businesses (name, industry, city, address, card_url, score, qualified, pitch, whatsapp)
+            VALUES (${item.name || ""}, ${item.rubrics?.[0]?.name || query}, ${city}, ${item.address_name || ""}, ${cardUrl}, ${score}, false, ${buildPitch(item, niche)}, ${pickMobilePhone(item)})
             ON CONFLICT (card_url) WHERE card_url <> '' DO NOTHING
           `;
         } catch (error) {
@@ -159,10 +179,14 @@ export async function GET(request: Request) {
     const lines = [
       `🔎 <b>Автопоиск нашёл ${found.length} новых бизнесов</b>`,
       "",
-      ...top.map((f) => `• ${escapeHtml(f.name)} (${escapeHtml(f.niche)}, ${escapeHtml(f.city)}) — балл ${f.score}`),
-      found.length > top.length ? `…и ещё ${found.length - top.length}.` : null,
-      "",
-      "Всё в /admin — там же ссылки на карточки для проверки телефона и готовые черновики.",
+      ...top.map((f) => {
+        // wa.me с готовым текстом: одно нажатие — открывается WhatsApp с персональным
+        // сообщением, остаётся только нажать «Отправить» (автоотправка запрещена
+        // правилами WhatsApp и ведёт к бану номера).
+        const wa = f.phone ? ` — <a href="https://wa.me/${f.phone}?text=${encodeURIComponent(f.pitch)}">написать в WhatsApp</a>` : " — без мобильного номера";
+        return `• ${escapeHtml(f.name)} (${escapeHtml(f.niche)}, ${escapeHtml(f.city)}), балл ${f.score}${wa}`;
+      }),
+      found.length > top.length ? `…и ещё ${found.length - top.length} в /admin.` : null,
     ].filter(Boolean);
     await notifyOwner(lines.join("\n"), { html: true });
   }

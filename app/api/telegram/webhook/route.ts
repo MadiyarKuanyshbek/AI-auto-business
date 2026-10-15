@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { extendSubscription, messageClientOwner, formatDate } from "@/lib/subscriptionBilling";
 import { sql } from "@/lib/db";
 import { answerCallbackQuery, answerInlineQuery, escapeHtml, notifyOwner, sendTelegramMessage } from "@/lib/telegram";
 import {
@@ -378,6 +379,35 @@ async function handleCallback(callbackId: string, data: string, chatId: number) 
       if (Number.isInteger(leadId) && status in LEAD_STATUS_LABELS && status !== "new") {
         await sql`UPDATE leads SET status = ${status} WHERE id = ${leadId}`;
         await sendTelegramMessage(chatId, `Заявка #${leadId} → ${LEAD_STATUS_LABELS[status]}`);
+      }
+    }
+    return;
+  }
+
+  if (data.startsWith("pay:")) {
+    if (isOwner && sql) {
+      const [, idStr, action, monthsStr] = data.split(":");
+      const subId = Number(idStr);
+      if (Number.isInteger(subId)) {
+        if (action === "ok") {
+          const months = Math.max(1, Math.min(24, Number(monthsStr) || 1));
+          const updated = await extendSubscription(subId, months);
+          if (updated?.current_period_end) {
+            await messageClientOwner(
+              updated,
+              `✅ Оплата получена, спасибо! Ваш бот работает до ${formatDate(updated.current_period_end)}.`,
+            );
+            await sendTelegramMessage(
+              chatId,
+              `✅ ${updated.business_name}: продлено до ${formatDate(updated.current_period_end)}.`,
+            );
+          } else {
+            await sendTelegramMessage(chatId, `Подписка #${subId} не найдена.`);
+          }
+        } else {
+          await sql`UPDATE subscription_payments SET status = 'rejected' WHERE subscription_id = ${subId} AND status = 'claimed'`;
+          await sendTelegramMessage(chatId, `Платёж по подписке #${subId} отклонён.`);
+        }
       }
     }
     return;

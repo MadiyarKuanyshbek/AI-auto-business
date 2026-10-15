@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { payUrl } from "@/lib/subscriptionBilling";
 import { sql, type SubscriptionRow } from "@/lib/db";
 import { sendTelegramMessageAs, answerCallbackQueryAs } from "@/lib/telegram";
 import { generateAiReply } from "@/src/gemini";
@@ -84,6 +85,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ own
   try {
     update = await request.json();
   } catch {
+    return NextResponse.json({ ok: true });
+  }
+
+  // Подписка закончилась (пробный период или оплаченный срок) — бот молчит
+  // для клиентов бизнеса, а владельцу напоминает про оплату. Кнопки владельца
+  // (callback) и привязка аккаунта (/start link_) при этом продолжают работать.
+  if (sub.status !== "active" && !update.callback_query && !update.message?.text?.startsWith("/start link_")) {
+    const chat = update.message?.chat.id;
+    if (chat !== undefined) {
+      const isOwnerChat = sub.telegram_owner_chat_id !== null && String(chat) === String(sub.telegram_owner_chat_id);
+      await sendTelegramMessageAs(
+        sub.telegram_bot_token,
+        chat,
+        isOwnerChat
+          ? `⏸ Подписка закончилась, бот приостановлен. Оплатите, чтобы он снова отвечал клиентам: ${payUrl(sub.id)}`
+          : "Извините, сейчас бот временно недоступен. Пожалуйста, свяжитесь с заведением напрямую.",
+      );
+    }
     return NextResponse.json({ ok: true });
   }
 

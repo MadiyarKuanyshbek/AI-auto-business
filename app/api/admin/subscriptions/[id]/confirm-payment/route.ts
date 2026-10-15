@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyAdminSessionToken } from "@/lib/adminAuth";
 import { sql, type SubscriptionRow } from "@/lib/db";
+import { extendSubscription, messageClientOwner, formatDate } from "@/lib/subscriptionBilling";
 
 async function isAuthorized(request: Request) {
   const secret = process.env.ADMIN_PASSWORD;
@@ -65,6 +66,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!sub) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
+  if (sub.channel === "telegram") {
+    const updated = await extendSubscription(subId, periodMonths);
+    if (updated?.current_period_end) {
+      await messageClientOwner(
+        updated,
+        `✅ Оплата получена, спасибо! Ваш бот работает до ${formatDate(updated.current_period_end)}.`,
+      );
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   if (sub.status !== "pending_payment") {
     return NextResponse.json({ error: "not_pending" }, { status: 409 });
   }

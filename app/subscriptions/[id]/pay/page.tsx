@@ -13,8 +13,7 @@ export default async function PayPage({ params }: { params: Promise<{ id: string
   const [sub] = (await sql`SELECT * FROM subscriptions WHERE id = ${subId}`) as SubscriptionRow[];
   if (!sub) notFound();
 
-  // Уже оплачено/обрабатывается — незачем снова показывать реквизиты.
-  if (sub.status !== "pending_payment") {
+  if (sub.status === "cancelled") {
     redirect(`/subscriptions/${subId}/status`);
   }
 
@@ -40,7 +39,8 @@ export default async function PayPage({ params }: { params: Promise<{ id: string
         </div>
 
         <p className="mt-4 text-xs text-muted">
-          После перевода нажмите «Я оплатил» — мы проверим платёж и включим бота, обычно в течение пары часов.
+          После перевода нажмите «Я оплатил» — мы проверим платёж и продлим бота, обычно в течение пары часов.
+          Если дело срочное, напишите нам в Telegram — подтвердим вручную.
         </p>
 
         <div className="mt-6">

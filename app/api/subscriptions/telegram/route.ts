@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
-import { sql } from "@/lib/db";
+import { sql, type SubscriptionRow } from "@/lib/db";
+import { escapeHtml } from "@/lib/telegram";
 import { normalizePhone } from "@/lib/phone";
 import { products } from "@/lib/products";
 import { getBotInfo, registerBotCommands, registerWebhook } from "@/lib/telegramClientBot";
 import { SITE_URL } from "@/lib/siteUrl";
 import { hashPortalPassword } from "@/lib/portalAuth";
+import { getSubscriptionPrice } from "@/lib/subscriptionPricing";
+import { TRIAL_DAYS, notifyAgencyAboutClient } from "@/lib/subscriptionBilling";
 
 type TelegramSubscriptionPayload = {
   productId: string;
@@ -59,6 +62,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "invalid_business_slug" }, { status: 400 });
   }
 
+  const price = getSubscriptionPrice(product.id);
+  if (price === null) {
+    return NextResponse.json({ error: "no_price_for_product" }, { status: 400 });
+  }
+
   const phoneDigits = normalizePhone(body.contactPhone);
   if (!phoneDigits) {
     return NextResponse.json({ error: "invalid_phone" }, { status: 400 });
@@ -79,12 +87,12 @@ export async function POST(request: Request) {
   const [row] = await sql`
     INSERT INTO subscriptions (
       owner_id, product_id, business_slug, business_name, contact_name,
-      contact_phone, price_kzt, status, channel,
+      contact_phone, price_kzt, status, channel, current_period_end,
       telegram_bot_token, telegram_bot_username, telegram_webhook_secret, portal_password_hash
     )
     VALUES (
       ${placeholderOwnerId}, ${product.id}, ${body.businessSlug ?? null}, ${body.businessName.trim()}, ${body.contactName.trim()},
-      ${phoneDigits}, 0, 'active', 'telegram',
+      ${phoneDigits}, ${price}, 'active', 'telegram', now() + make_interval(days => ${TRIAL_DAYS}),
       ${botToken}, ${botInfo.username}, ${webhookSecret}, ${portalPasswordHash}
     )
     RETURNING id
@@ -103,6 +111,13 @@ export async function POST(request: Request) {
     console.error(`Failed to register Telegram webhook for owner ${ownerId}`);
   }
   await registerBotCommands(botToken);
+
+  const [created] = await sql`SELECT * FROM subscriptions WHERE id = ${id}`;
+  await notifyAgencyAboutClient(
+    created as SubscriptionRow,
+    `🆕 <b>Новая регистрация (пробный период ${TRIAL_DAYS} дней)</b>
+${escapeHtml(product.title)} · ${price.toLocaleString("ru-RU")} ₸/мес`,
+  );
 
   return NextResponse.json({ id, botUsername: botInfo.username });
 }

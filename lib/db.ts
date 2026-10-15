@@ -56,6 +56,7 @@ export type BusinessRow = {
   qualified: boolean;
   pitch: string;
   viewed: boolean;
+  contacted_at: string | null;
   created_at: string;
 };
 
@@ -95,6 +96,7 @@ export type SubscriptionRow = {
   opens_at: string | null;
   closes_at: string | null;
   portal_password_hash: string | null;
+  paid_at: string | null;
   created_at: string;
   updated_at: string;
 };

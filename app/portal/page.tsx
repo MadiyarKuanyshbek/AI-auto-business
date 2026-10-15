@@ -33,7 +33,15 @@ export default async function PortalPage() {
   }
 
   const productLabel = products.find((p) => p.id === sub.product_id)?.title ?? sub.product_id;
-  const needsRenewal = sub.status === "expired" || sub.status === "pending_payment";
+  const inTrial = sub.status === "active" && !sub.paid_at;
+  const daysLeft = sub.current_period_end
+    ? Math.ceil((new Date(sub.current_period_end).getTime() - new Date().getTime()) / 86_400_000)
+    : null;
+  const needsRenewal =
+    sub.status === "expired" ||
+    sub.status === "pending_payment" ||
+    inTrial ||
+    (daysLeft !== null && daysLeft <= 7);
 
   let botStatus: "connected" | "connecting" | "not_started" | "unknown" = "unknown";
   if (sub.status === "active" && sub.channel === "whatsapp") {
@@ -78,7 +86,7 @@ export default async function PortalPage() {
 
           <div className="mt-4 flex items-center justify-between text-sm">
             <span className="text-muted">Статус</span>
-            <span className="font-medium">{STATUS_LABELS[sub.status] ?? sub.status}</span>
+            <span className="font-medium">{inTrial ? "Пробный период" : (STATUS_LABELS[sub.status] ?? sub.status)}</span>
           </div>
           <div className="mt-2 flex items-center justify-between text-sm">
             <span className="text-muted">Стоимость</span>
@@ -119,7 +127,7 @@ export default async function PortalPage() {
             href={`/subscriptions/${sub.id}/pay`}
             className="mt-3 block w-full rounded-full bg-accent px-6 py-3 text-center text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent/90"
           >
-            Продлить подписку
+            {inTrial ? `Оплатить подписку · ${sub.price_kzt.toLocaleString("ru-RU")} ₸` : "Продлить подписку"}
           </Link>
         )}
       </div>

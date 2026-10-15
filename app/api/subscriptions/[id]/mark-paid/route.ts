@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { sql, type SubscriptionRow } from "@/lib/db";
-import { escapeHtml, notifyOwner } from "@/lib/telegram";
+import { escapeHtml, sendTelegramMessage } from "@/lib/telegram";
 import { products } from "@/lib/products";
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -18,7 +18,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   if (!sub) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
-  if (sub.status !== "pending_payment") {
+  if (sub.status === "cancelled") {
     return NextResponse.json({ error: "not_pending" }, { status: 409 });
   }
 
@@ -33,10 +33,24 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     `Сумма: ${sub.price_kzt.toLocaleString("ru-RU")} ₸/мес`,
     `Контакт: ${escapeHtml(sub.contact_name)}, WhatsApp ${escapeHtml(sub.contact_phone)}`,
     "",
-    "Проверьте перевод и подтвердите в /admin/subscriptions.",
+    "Проверьте поступление на Kaspi и нажмите кнопку — бот клиента продлится сам.",
   ].join("\n");
 
-  await notifyOwner(text, { html: true });
+  const ownerChatId = process.env.TELEGRAM_CHAT_ID;
+  if (ownerChatId) {
+    await sendTelegramMessage(ownerChatId, text, {
+      html: true,
+      keyboard:
+        sub.channel === "telegram"
+          ? [
+              [
+                { text: "✅ Пришло — продлить на 1 мес", callback_data: `pay:${subId}:ok:1` },
+                { text: "❌ Не пришло", callback_data: `pay:${subId}:no` },
+              ],
+            ]
+          : undefined,
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }

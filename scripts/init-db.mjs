@@ -58,6 +58,8 @@ async function main() {
   // Отметка "уже посмотрел это в админке" — чтобы отличать бизнесы, до
   // которых ещё не дошли руки, от уже разобранных.
   await sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS viewed BOOLEAN NOT NULL DEFAULT false`;
+  // Когда последний раз писали владельцу про этот бизнес с предложением (аутрич-очередь).
+  await sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS contacted_at TIMESTAMPTZ`;
 
   // Заявки, которые бот сам заметил в Telegram-группах (см. lib/groupWatcher.ts) —
   // сообщение + черновик ответа. Отправка — только вручную, бот сам не пишет.
@@ -132,6 +134,8 @@ async function main() {
   // подписку — новый запрос перезаписывает предыдущий.
   await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS otp_code TEXT`;
   await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMPTZ`;
+  // Когда клиент впервые оплатил подписку (NULL = ещё в пробном периоде).
+  await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`;
   // Свой текст инструкции для ИИ-бота клиента (тон, что отвечать) — настраивается
   // в личном кабинете. NULL = используется общий текст по умолчанию.
   await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS system_prompt TEXT`;

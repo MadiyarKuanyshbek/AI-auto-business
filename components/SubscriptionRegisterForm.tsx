@@ -17,7 +17,7 @@ export default function SubscriptionRegisterForm({
   price: number;
 }) {
   const router = useRouter();
-  const [channel, setChannel] = useState<Channel>("whatsapp");
+  const [channel, setChannel] = useState<Channel>("telegram");
   const [status, setStatus] = useState<Status>("idle");
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -118,13 +118,13 @@ export default function SubscriptionRegisterForm({
             channel === "telegram" ? "bg-accent text-accent-foreground" : "text-muted hover:text-foreground"
           }`}
         >
-          Telegram · бесплатно
+          Telegram · 7 дней бесплатно
         </button>
       </div>
       <p className="text-xs text-muted">
         {channel === "whatsapp"
           ? "Бот работает 24/7, пока подписка активна. Оплата — переводом на Kaspi, подтверждаем вручную."
-          : "Telegram-бот не требует постоянного сервера — подключается сразу и бесплатно."}
+          : `Бот подключается сразу, первые 7 дней бесплатно без оплаты. Дальше — ${price.toLocaleString("ru-RU")} ₸/мес переводом на Kaspi.`}
       </p>
 
       <div>
@@ -228,7 +228,7 @@ export default function SubscriptionRegisterForm({
         disabled={status === "submitting"}
         className="w-full rounded-full bg-accent px-6 py-3 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent/90 disabled:opacity-60"
       >
-        {status === "submitting" ? "Оформляем..." : channel === "whatsapp" ? "Оформить подписку" : "Подключить бесплатно"}
+        {status === "submitting" ? "Оформляем..." : channel === "whatsapp" ? "Оформить подписку" : "Попробовать 7 дней бесплатно"}
       </button>
     </form>
   );

@@ -7,6 +7,7 @@ import { products, type Business } from "@/lib/products";
 import BusinessPetalPicker from "./BusinessPetalPicker";
 import ProductDemoModal from "./ProductDemoModal";
 import Reveal from "./Reveal";
+import { isSelfServe } from "@/lib/subscriptionPricing";
 
 export default function ProductsSection() {
   const [pickingProductId, setPickingProductId] = useState<string | null>(null);
@@ -24,13 +25,12 @@ export default function ProductsSection() {
     <section id="products" className="py-20">
       <div className="mx-auto max-w-6xl px-6">
         <h2 className="text-center font-display text-3xl font-bold tracking-tight sm:text-4xl">
-          5 типов ИИ-администраторов
+          Что мы делаем
         </h2>
         <p className="mx-auto mt-4 max-w-2xl text-center text-muted">
-          Каждый пакет закрывает свою зону: клиентов, IT-инфраструктуру,
-          сотрудников, данные или комьюнити. Выберите свой бизнес и
-          протестируйте демо-диалог, чтобы понять, как это будет работать у
-          вас.
+          Готовый продукт — ИИ-администратор для общения с клиентами: подключается
+          за 5 минут, 7 дней бесплатно. Остальные решения собираем под вашу задачу
+          по заявке. Выберите бизнес и протестируйте демо-диалог.
         </p>
         <div className="mt-4 text-center">
           <span className="inline-block rounded-full bg-amber-500/10 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-amber-400">
@@ -85,13 +85,23 @@ export default function ProductsSection() {
                   >
                     Протестировать демо
                   </button>
-                  <Link
-                    href={`/register/${product.id}`}
-                    onClick={() => track("register_opened", { product: product.id })}
-                    className="rounded-full border border-accent/40 bg-accent/10 px-5 py-2 text-center text-sm font-medium text-accent transition-colors hover:bg-accent/20"
-                  >
-                    Подключить бота
-                  </Link>
+                  {isSelfServe(product.id) ? (
+                    <Link
+                      href={`/register/${product.id}`}
+                      onClick={() => track("register_opened", { product: product.id })}
+                      className="rounded-full border border-accent/40 bg-accent/10 px-5 py-2 text-center text-sm font-medium text-accent transition-colors hover:bg-accent/20"
+                    >
+                      Подключить бота — 7 дней бесплатно
+                    </Link>
+                  ) : (
+                    <a
+                      href="#lead-form"
+                      onClick={() => track("custom_request_clicked", { product: product.id })}
+                      className="rounded-full border border-border px-5 py-2 text-center text-sm font-medium text-foreground transition-colors hover:bg-white/5"
+                    >
+                      Под заказ — обсудить проект
+                    </a>
+                  )}
                 </div>
               </div>
             </Reveal>

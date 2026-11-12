@@ -28,9 +28,9 @@ export default function ProductsSection() {
           Что мы делаем
         </h2>
         <p className="mx-auto mt-4 max-w-2xl text-center text-muted">
-          Готовый продукт — ИИ-администратор для общения с клиентами: подключается
-          за 5 минут, 7 дней бесплатно. Остальные решения собираем под вашу задачу
-          по заявке. Выберите бизнес и протестируйте демо-диалог.
+          ИИ-администратор для общения с клиентами: подключается за 5 минут, 7 дней
+          бесплатно. Выберите свой бизнес и протестируйте демо-диалог. Нужны
+          интеграции, отчёты или мониторинг? Собираем под вашу задачу по заявке.
         </p>
         <div className="mt-4 text-center">
           <span className="inline-block rounded-full bg-amber-500/10 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-amber-400">
@@ -38,7 +38,7 @@ export default function ProductsSection() {
           </span>
         </div>
         <div className="mt-8 flex flex-wrap justify-center gap-6">
-          {products.map((product, i) => (
+          {products.filter((p) => isSelfServe(p.id)).map((product, i) => (
             <Reveal
               key={product.id}
               delay={(i % 3) * 80}

@@ -5,7 +5,7 @@ import { normalizePhone } from "@/lib/phone";
 import { products } from "@/lib/products";
 import { getBotInfo, registerBotCommands, registerWebhook } from "@/lib/telegramClientBot";
 import { SITE_URL } from "@/lib/siteUrl";
-import { hashPortalPassword } from "@/lib/portalAuth";
+import { hashPortalPassword, createPortalSessionToken, PORTAL_REMEMBER_TTL_MS } from "@/lib/portalAuth";
 import { getSubscriptionPrice } from "@/lib/subscriptionPricing";
 import { TRIAL_DAYS, notifyAgencyAboutClient } from "@/lib/subscriptionBilling";
 
@@ -119,5 +119,20 @@ export async function POST(request: Request) {
 ${escapeHtml(product.title)} · ${price.toLocaleString("ru-RU")} ₸/мес`,
   );
 
-  return NextResponse.json({ id, botUsername: botInfo.username });
+  const response = NextResponse.json({ id, botUsername: botInfo.username });
+
+  // Сразу входим в личный кабинет: после регистрации клиент попадает в мастер
+  // настройки без отдельного логина.
+  const sessionSecret = process.env.PORTAL_SESSION_SECRET;
+  if (sessionSecret) {
+    const token = await createPortalSessionToken(id, sessionSecret, PORTAL_REMEMBER_TTL_MS);
+    response.cookies.set("portal_session", token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      maxAge: Math.floor(PORTAL_REMEMBER_TTL_MS / 1000),
+      path: "/",
+    });
+  }
+  return response;
 }

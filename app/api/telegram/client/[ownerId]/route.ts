@@ -2,28 +2,12 @@ import { NextResponse } from "next/server";
 import { payUrl } from "@/lib/subscriptionBilling";
 import { sql, type SubscriptionRow } from "@/lib/db";
 import { sendTelegramMessageAs, answerCallbackQueryAs } from "@/lib/telegram";
-import { generateAiReply } from "@/src/gemini";
+import { processConsultMessage } from "@/lib/consultBot";
 import { processOrderMessage, handleOwnerCallback, logConfusion } from "@/lib/orderBot";
 
-// generateAiReply умеет ретраить до 5 раз на 2 модели — в худшем случае это
-// может растянуться дольше, чем Telegram готов ждать ответ вебхука (видели
-// реальный "Read timeout expired" в getWebhookInfo). Даём функции запас по
-// времени сверх дефолтных 10с на Vercel Hobby...
+// ИИ может отвечать дольше дефолтных 10с Vercel Hobby (перебор моделей) —
+// даём функции запас; внутри бота ответ при этом ограничен по времени.
 export const maxDuration = 30;
-// ...и всё равно не ждём ИИ дольше 15с — лучше быстро ответить заглушкой,
-// чем заставить Telegram решить, что бот не отвечает, и получить таймаут.
-const AI_REPLY_TIMEOUT_MS = 15000;
-const TIMEOUT_FALLBACK_REPLY = "Принял ваш запрос! Отвечу чуть позже.";
-
-const DEFAULT_SYSTEM_PROMPT =
-  "Ты — AI-администратор бизнеса в Telegram. Отвечай кратко, дружелюбно и по делу.";
-
-async function generateAiReplyWithTimeout(prompt: string, text: string): Promise<string> {
-  return Promise.race([
-    generateAiReply(prompt, text),
-    new Promise<string>((resolve) => setTimeout(() => resolve(TIMEOUT_FALLBACK_REPLY), AI_REPLY_TIMEOUT_MS)),
-  ]);
-}
 
 type TelegramUpdate = {
   message?: {
@@ -166,7 +150,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ own
         .join(" ");
       await processOrderMessage(sub, { text, fileId, fileKind, chatId, customerName: customerName || null });
     } else if (text) {
-      const reply = await generateAiReplyWithTimeout(sub.system_prompt || DEFAULT_SYSTEM_PROMPT, text);
+      const reply = await processConsultMessage(sub, {
+        chatId,
+        text,
+        customerName: message?.from?.first_name ?? null,
+        username: message?.from?.username ?? null,
+      });
       await sendTelegramMessageAs(sub.telegram_bot_token, chatId, reply);
     }
   } catch (err) {

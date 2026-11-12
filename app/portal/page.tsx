@@ -108,8 +108,17 @@ export default async function PortalPage() {
 
         {sub.channel === "telegram" && (
           <Link
+            href="/portal/setup"
+            className="mt-4 block w-full rounded-full bg-accent px-6 py-3 text-center text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent/90"
+          >
+            {sub.system_prompt || sub.menu_items?.length ? "Обновить прайс и меню" : "Настроить бота (прайс, меню)"}
+          </Link>
+        )}
+
+        {sub.channel === "telegram" && (
+          <Link
             href="/portal/orders"
-            className="mt-4 block w-full rounded-full border border-border px-6 py-3 text-center text-sm font-semibold transition-colors hover:bg-white/5"
+            className="mt-3 block w-full rounded-full border border-border px-6 py-3 text-center text-sm font-semibold transition-colors hover:bg-white/5"
           >
             Заказы
           </Link>

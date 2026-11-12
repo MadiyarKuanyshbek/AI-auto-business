@@ -116,3 +116,31 @@ export async function generateJsonReply<T>(prompt: string, userMessage: string):
     return null;
   }
 }
+
+export type InlineFile = { mimeType: string; dataBase64: string };
+
+/**
+ * Разбор документа (прайс, меню, PDF, фото) в структуру. Тот же перебор
+ * моделей, что и для текста, но с вложенными файлами — Gemini читает фото и
+ * PDF сам, без OCR. null при сбое: вызывающий код просит пользователя
+ * повторить, а не подставляет догадки.
+ */
+export async function generateJsonFromFiles<T>(prompt: string, text: string, files: InlineFile[]): Promise<T | null> {
+  for (const modelName of MODEL_CHAIN) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: { responseMimeType: "application/json", temperature: 0 },
+      });
+      const parts = [
+        { text: `${prompt}\n\n${text}` },
+        ...files.map((f) => ({ inlineData: { mimeType: f.mimeType, data: f.dataBase64 } })),
+      ];
+      const result = await model.generateContent(parts);
+      return JSON.parse(result.response.text()) as T;
+    } catch (err) {
+      console.error(`Model ${modelName} failed on file extraction:`, err);
+    }
+  }
+  return null;
+}

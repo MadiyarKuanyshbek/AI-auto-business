@@ -136,6 +136,20 @@ async function main() {
   await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMPTZ`;
   // Когда клиент впервые оплатил подписку (NULL = ещё в пробном периоде).
   await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`;
+
+  // Короткая память диалога бота-консультанта (бот на серверлесе ничего не
+  // помнит между сообщениями) + отметки "заявка передана владельцу".
+  await sql`
+    CREATE TABLE IF NOT EXISTS bot_chat_log (
+      id SERIAL PRIMARY KEY,
+      subscription_id INTEGER NOT NULL,
+      chat_id BIGINT NOT NULL,
+      role TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS bot_chat_log_chat_idx ON bot_chat_log (subscription_id, chat_id, created_at DESC)`;
   // Свой текст инструкции для ИИ-бота клиента (тон, что отвечать) — настраивается
   // в личном кабинете. NULL = используется общий текст по умолчанию.
   await sql`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS system_prompt TEXT`;

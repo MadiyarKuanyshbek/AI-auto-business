@@ -51,6 +51,7 @@ export default function VehicleScreen() {
   return (
     <Screen>
       <H1>{vehicleTitle(scan)}</H1>
+      <Muted>Сканирование от {new Date(scan.scannedAt).toLocaleString("ru-RU")}</Muted>
       <Card>
         <Row label="VIN" value={scan.vin} mono />
         <Row label="Производитель" value={info?.make ?? offline?.make} />

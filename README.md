@@ -46,5 +46,3 @@ npx eas build --profile development --platform android
 - `src/storage/` — клиенты, авто, заказы.
 - `src/app/` — экраны (Expo Router).
 - `tests/` — автотесты на симуляторе.
-
-Прежний проект (сайт и Telegram-боты) сохранён в git под тегом `old-autopilot-ai`.

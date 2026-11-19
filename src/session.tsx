@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Elm327 } from "./core/elm327";
 import { DEMO_CATALOG, parseCatalog, type CatalogItem } from "./core/catalog";
 import { scanVehicle, type VehicleScan } from "./core/scanner";
@@ -39,15 +39,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [progress, setProgress] = useState<Session["progress"]>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const elmRef = useRef<Elm327 | null>(null);
-  const [, force] = useState(0);
+  const [elmState, setElmState] = useState<Elm327 | null>(null);
+
+  // После перезапуска показываем последнее сохранённое сканирование (без подключения к авто).
+  const latestStored = useMemo(
+    () => store.data.vehicles.flatMap((v) => v.scans).sort((a, b) => b.scannedAt - a.scannedAt)[0] ?? null,
+    [store.data.vehicles],
+  );
 
   const catalog = useMemo(() => [...DEMO_CATALOG, ...parseCatalog(store.data.catalogJson)], [store.data.catalogJson]);
 
   const disconnect = useCallback(async () => {
     const elm = elmRef.current;
     elmRef.current = null;
+    setElmState(null);
     setConnection({ status: "idle" });
-    force((n) => n + 1);
     await elm?.close().catch(() => undefined);
   }, []);
 
@@ -62,13 +68,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         transport.onClose(() => {
           if (elmRef.current === elm) {
             elmRef.current = null;
+            setElmState(null);
             setConnection({ status: "error", message: "Соединение с адаптером оборвалось" });
-            force((n) => n + 1);
           }
         });
         elmRef.current = elm;
+        setElmState(elm);
         setConnection({ status: "ready", label: transport.label, kind: transport.kind });
-        force((n) => n + 1);
         return true;
       } catch (e) {
         await elm.close().catch(() => undefined);
@@ -106,8 +112,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const value: Session = {
     connection,
-    elm: elmRef.current,
-    scan,
+    elm: elmState,
+    scan: scan ?? latestStored,
     scanning,
     progress,
     scanError,

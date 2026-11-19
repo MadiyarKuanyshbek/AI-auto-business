@@ -31,7 +31,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Актуальные данные для функций, которые должны вернуть результат сразу (а не после ререндера).
   const dataRef = useRef<AppData>(EMPTY_DATA);
-  dataRef.current = data;
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
 
   useEffect(() => {
     AsyncStorage.getItem(KEY)

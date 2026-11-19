@@ -95,3 +95,18 @@ describe("model year resolution", () => {
     expect(resolveModelYear(na, { modelYear: 2003 })).toBe(2003);
   });
 });
+
+import { buildReportHtml, buildReportText } from "../src/core/report";
+describe("report", () => {
+  it("builds text and HTML and escapes markup", async () => {
+    const v = structuredClone(DEMO_VEHICLES[0]);
+    v.ecus[0].dids![0xf197] = "<script>alert(1)</script>";
+    const elm = new Elm327(new SimulatedAdapter(v));
+    await elm.open();
+    const scan = await scanVehicle(elm, { online: false });
+    expect(buildReportText(scan)).toContain("WVWZZZ1KZBW123456");
+    const html = buildReportHtml(scan);
+    expect(html).not.toContain("<script>alert");
+    expect(html).toContain("P0299");
+  });
+});

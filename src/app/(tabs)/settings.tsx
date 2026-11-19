@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Share } from "react-native";
+import { Platform, Share } from "react-native";
 import { LEGAL_NOTICE, parseCatalog } from "../../core/catalog";
+import { buildReportHtml, buildReportText } from "../../core/report";
 import { useSession } from "../../session";
 import { useStore } from "../../storage/store";
-import { vehicleTitle } from "../../storage/model";
 import { Body, Button, Card, Field, H2, Muted, Row, Screen } from "../../ui/kit";
 
 export default function SettingsScreen() {
@@ -28,19 +28,17 @@ export default function SettingsScreen() {
 
   async function shareReport() {
     if (!scan) return;
-    const lines = [
-      `Отчёт AutoFlash: ${vehicleTitle(scan)}`,
-      `VIN: ${scan.vin ?? "—"}`,
-      `Дата: ${new Date(scan.scannedAt).toLocaleString("ru-RU")}`,
-      `Напряжение: ${scan.adapter.voltage ?? "—"} В`,
-      "",
-      "Блоки:",
-      ...scan.ecus.map((e) => `• ${e.name} (${e.txId}): ПО ${e.ident.softwareVersion ?? e.ident.supplierSoftwareNumber ?? "—"}, HW ${e.ident.hardwareNumber ?? e.ident.supplierHardwareNumber ?? "—"}`),
-      "",
-      `Calibration ID: ${scan.mode09.calibrationIds.join(", ") || "—"}`,
-      `Ошибки: ${scan.dtcs.map((d) => d.code).join(", ") || "нет"}`,
-    ];
-    await Share.share({ message: lines.join("\n") });
+    await Share.share({ message: buildReportText(scan) });
+  }
+
+  function printReport() {
+    if (!scan || Platform.OS !== "web") return;
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write(buildReportHtml(scan));
+    w.document.close();
+    w.focus();
+    w.print();
   }
 
   const log = exchangeLog();
@@ -49,6 +47,7 @@ export default function SettingsScreen() {
     <Screen>
       <H2>Отчёт</H2>
       <Button title="Поделиться отчётом о последнем сканировании" onPress={() => void shareReport()} disabled={!scan} />
+      {Platform.OS === "web" ? <Button title="Распечатать / сохранить в PDF" kind="ghost" onPress={printReport} disabled={!scan} /> : null}
 
       <H2>Каталог прошивок</H2>
       <Card>

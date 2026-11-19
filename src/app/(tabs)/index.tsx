@@ -5,10 +5,11 @@ import { DEMO_VEHICLES } from "../../core/sim/vehicles";
 import { useSession } from "../../session";
 import { ble } from "../../transport/ble";
 import type { BleDeviceInfo } from "../../transport/types";
+import { pickSerialTransport, serialSupported } from "../../transport/serial";
 import { createWifiTransport, wifiSupported } from "../../transport/wifi";
 import { Badge, Body, Button, Card, Field, H1, H2, Muted, Progress, Screen, colors } from "../../ui/kit";
 
-type Mode = "demo" | "ble" | "wifi";
+type Mode = "demo" | "ble" | "serial" | "wifi";
 
 export default function ConnectScreen() {
   const router = useRouter();
@@ -52,6 +53,16 @@ export default function ConnectScreen() {
       const transport = await ble.pick();
       if (transport) await session.connect(transport);
     } catch (e) {
+      if (e instanceof Error && e.name !== "NotFoundError") setBleError(e.message);
+    }
+  }
+
+  async function connectSerial() {
+    setBleError(null);
+    try {
+      await session.connect(await pickSerialTransport());
+    } catch (e) {
+      // Пользователь закрыл окно выбора порта — это не ошибка.
       if (e instanceof Error && e.name !== "NotFoundError") setBleError(e.message);
     }
   }
@@ -106,6 +117,7 @@ export default function ConnectScreen() {
               [
                 ["demo", "Демо"],
                 ["ble", "Bluetooth"],
+                ...(serialSupported ? ([["serial", "COM / USB"]] as const) : []),
                 ["wifi", "Wi‑Fi"],
               ] as const
             ).map(([key, label]) => (
@@ -148,6 +160,15 @@ export default function ConnectScreen() {
               )}
               {bleError ? <Body style={{ color: colors.bad }}>{bleError}</Body> : null}
               <Muted>iPhone работает только с Bluetooth LE и Wi‑Fi адаптерами. Классические Bluetooth-адаптеры ELM327 работают только на Android.</Muted>
+            </Card>
+          ) : null}
+
+          {mode === "serial" ? (
+            <Card>
+              <H2>COM-порт (USB или Bluetooth)</H2>
+              <Muted>Подходит для USB-кабелей ELM327 и для Bluetooth-адаптеров, спаренных в Windows (они появляются как COM-порт). Скорость порта подбирается автоматически.</Muted>
+              <Button title="Выбрать порт" onPress={() => void connectSerial()} loading={connection.status === "connecting"} />
+              {bleError ? <Body style={{ color: colors.bad }}>{bleError}</Body> : null}
             </Card>
           ) : null}
 

@@ -44,3 +44,6 @@ yarn-error.*
 .vercel
 .claude/scheduled_tasks.lock
 dist-check/
+desktop/stage/
+desktop/out/
+desktop/sim-server.cjs

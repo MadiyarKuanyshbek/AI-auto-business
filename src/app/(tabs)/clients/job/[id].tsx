@@ -2,7 +2,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Pressable, Text, View } from "react-native";
 import { useStore } from "../../../../storage/store";
 import { JOB_STATUSES, JOB_STATUS_LABEL, formatKzt } from "../../../../storage/model";
+import { buildReceiptHtml, buildReceiptText, type ReceiptInput } from "../../../../core/reportExtra";
 import { Body, Button, Card, Empty, Field, H2, Muted, Row, Screen, colors } from "../../../../ui/kit";
+import { printHtml } from "../../../../ui/print";
 
 export default function JobScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -67,6 +69,28 @@ export default function JobScreen() {
         <Muted key={i}>{new Date(l.t).toLocaleString("ru-RU")} · {l.text}</Muted>
       ))}
 
+      <Button
+        title="Квитанция (печать / PDF)"
+        kind="ghost"
+        onPress={() => {
+          const customer = customers.find((c) => c.id === job.customerId);
+          const receipt: ReceiptInput = {
+            workshop: store.data.settings.workshopName,
+            workshopPhone: store.data.settings.workshopPhone,
+            jobTitle: job.title,
+            jobNumber: job.id.slice(-5).toUpperCase(),
+            date: Date.now(),
+            customerName: customer?.name ?? "",
+            customerPhone: customer?.phone ?? "",
+            vehicle: vehicle?.title ?? "",
+            vin: vehicle?.vin ?? "",
+            priceKzt: job.priceKzt,
+            paidKzt: job.paidKzt,
+            notes: job.notes,
+          };
+          void printHtml(buildReceiptHtml(receipt), buildReceiptText(receipt));
+        }}
+      />
       <Button title="Удалить заказ" kind="danger" onPress={() => { store.removeJob(job.id); router.back(); }} />
     </Screen>
   );

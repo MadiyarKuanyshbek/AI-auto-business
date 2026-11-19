@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { DEMO_VEHICLES } from "../../core/sim/vehicles";
 import { useSession } from "../../session";
+import { useStore } from "../../storage/store";
 import { ble } from "../../transport/ble";
 import type { BleDeviceInfo } from "../../transport/types";
 import { pickSerialTransport, serialSupported } from "../../transport/serial";
@@ -14,8 +15,9 @@ type Mode = "demo" | "ble" | "serial" | "wifi";
 export default function ConnectScreen() {
   const router = useRouter();
   const session = useSession();
+  const { settings } = useStore().data;
   const { connection } = session;
-  const [mode, setMode] = useState<Mode>("demo");
+  const [mode, setMode] = useState<Mode>(settings.showDemo ? "demo" : "ble");
   const [devices, setDevices] = useState<BleDeviceInfo[]>([]);
   const [scanningBle, setScanningBle] = useState(false);
   const [bleError, setBleError] = useState<string | null>(null);
@@ -115,7 +117,7 @@ export default function ConnectScreen() {
           <View style={{ flexDirection: "row", gap: 8 }}>
             {(
               [
-                ["demo", "Демо"],
+                ...(settings.showDemo ? ([["demo", "Демо"]] as const) : []),
                 ["ble", "Bluetooth"],
                 ...(serialSupported ? ([["serial", "COM / USB"]] as const) : []),
                 ["wifi", "Wi‑Fi"],
@@ -131,7 +133,7 @@ export default function ConnectScreen() {
             ))}
           </View>
 
-          {mode === "demo" ? (
+          {mode === "demo" && settings.showDemo ? (
             <Card>
               <H2>Демо-режим</H2>
               <Muted>Виртуальные автомобили с настоящим протоколом обмена, без железа. Подходит, чтобы показать приложение клиенту.</Muted>
@@ -186,12 +188,14 @@ export default function ConnectScreen() {
         </>
       ) : null}
 
+      {settings.hadRealScan ? null : (
       <Card>
         <H2>Какой адаптер взять</H2>
         <Muted>• Для диагностики: OBDLink CX/MX+, Vgate iCar Pro BLE, vLinker MC+/BM+.</Muted>
         <Muted>• Дешёвые клоны ELM327 v2.1 часто зависают и теряют данные, на них возможны ошибки идентификации.</Muted>
         <Muted>• Для прошивки блоков нужен отдельный интерфейс (J2534 или профильный программатор): ELM327 для записи не подходит.</Muted>
       </Card>
+      )}
     </Screen>
   );
 }

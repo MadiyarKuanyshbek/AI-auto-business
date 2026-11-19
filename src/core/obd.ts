@@ -1,6 +1,7 @@
 import type { Elm327 } from "./elm327";
 import { AdapterError } from "./transport";
 import { bytesToAscii } from "./hex";
+import { describeDtc } from "./dtc";
 
 // ───────────── Режим 01: текущие данные ─────────────
 
@@ -93,38 +94,6 @@ export function decodeDtcPair(a: number, b: number): string | null {
   return `${DTC_PREFIX[a >> 4]}${(a & 0x0f).toString(16)}${b.toString(16).padStart(2, "0")}`.toUpperCase();
 }
 
-export const DTC_DESCRIPTIONS: Record<string, string> = {
-  P0100: "Цепь датчика массового расхода воздуха (MAF)",
-  P0101: "Диапазон/работа датчика MAF вне нормы",
-  P0113: "Высокий сигнал датчика температуры впуска",
-  P0117: "Низкий сигнал датчика температуры ОЖ",
-  P0118: "Высокий сигнал датчика температуры ОЖ",
-  P0130: "Цепь кислородного датчика (банк 1, датчик 1)",
-  P0171: "Бедная смесь (банк 1)",
-  P0172: "Богатая смесь (банк 1)",
-  P0201: "Цепь форсунки цилиндра 1",
-  P0299: "Недостаточный наддув (турбина)",
-  P0300: "Пропуски зажигания (несколько цилиндров)",
-  P0301: "Пропуски зажигания в цилиндре 1",
-  P0302: "Пропуски зажигания в цилиндре 2",
-  P0303: "Пропуски зажигания в цилиндре 3",
-  P0304: "Пропуски зажигания в цилиндре 4",
-  P0335: "Цепь датчика положения коленвала",
-  P0340: "Цепь датчика положения распредвала",
-  P0420: "Низкая эффективность катализатора (банк 1)",
-  P0440: "Система улавливания паров топлива (EVAP)",
-  P0442: "Малая утечка в системе EVAP",
-  P0500: "Датчик скорости автомобиля",
-  P0562: "Низкое напряжение бортсети",
-  P0606: "Неисправность процессора ЭБУ",
-  P2002: "Эффективность сажевого фильтра ниже порога",
-  U0100: "Потеряна связь с ЭБУ двигателя",
-};
-
-export function describeDtc(code: string): string | undefined {
-  return DTC_DESCRIPTIONS[code];
-}
-
 const DTC_SERVICES = { stored: 0x03, pending: 0x07, permanent: 0x0a } as const;
 
 export async function readDtcs(elm: Elm327, kind: keyof typeof DTC_SERVICES): Promise<Dtc[]> {
@@ -140,8 +109,9 @@ export async function readDtcs(elm: Elm327, kind: keyof typeof DTC_SERVICES): Pr
   const codes = new Set<string>();
   for (const m of messages) {
     if (m.data[0] !== service + 0x40) continue;
-    // CAN: байт 1 — число кодов; пары байтов идут дальше.
-    for (let i = 2; i + 1 < m.data.length; i += 2) {
+    // CAN: байт 1 — число кодов, пары идут со 2-го байта. K-Line/J1850: числа кодов нет, пары идут с 1-го.
+    const first = elm.bus === "can11" || elm.bus === "can29" ? 2 : 1;
+    for (let i = first; i + 1 < m.data.length; i += 2) {
       const code = decodeDtcPair(m.data[i], m.data[i + 1]);
       if (code) codes.add(code);
     }
@@ -163,31 +133,34 @@ function chunkAscii(data: number[], skip: number): string {
   return bytesToAscii(data.slice(skip).filter((b) => b !== 0));
 }
 
+/** Склеивает данные режима 09 из всех кадров (по K-Line каждый кадр — отдельное сообщение с номером). */
+function joinMode09(messages: { data: number[] }[], pid: number): number[] | null {
+  const parts = messages.filter((m) => m.data[0] === 0x49 && m.data[1] === pid);
+  if (parts.length === 0) return null;
+  return parts.flatMap((m) => m.data.slice(3));
+}
+
 /** VIN, Calibration ID (по нему подбирают файл прошивки), CVN, имя ЭБУ. */
 export async function readMode09(elm: Elm327): Promise<Mode09Info> {
   const info: Mode09Info = { calibrationIds: [], cvn: [] };
 
   try {
-    for (const m of await elm.request("0902")) {
-      if (m.data[0] === 0x49 && m.data[1] === 0x02) {
-        const vin = chunkAscii(m.data, 3).replace(/\s/g, "");
-        if (vin.length >= 11) info.vin = vin.slice(-17);
-        break;
-      }
+    const payload = joinMode09(await elm.request("0902"), 0x02);
+    if (payload) {
+      const vin = bytesToAscii(payload.filter((b) => b !== 0)).replace(/\s/g, "");
+      if (vin.length >= 11) info.vin = vin.slice(-17);
     }
   } catch {
-    /* авто может не отдавать VIN по OBD — он будет прочитан через UDS */
+    /* авто может не отдавать VIN по OBD — он будет прочитан через UDS/KWP */
   }
 
   try {
-    for (const m of await elm.request("0904")) {
-      if (m.data[0] === 0x49 && m.data[1] === 0x04) {
-        // Calibration ID: блоки по 16 байт ASCII.
-        const payload = m.data.slice(3);
-        for (let i = 0; i < payload.length; i += 16) {
-          const id = chunkAscii(payload.slice(i, i + 16), 0);
-          if (id) info.calibrationIds.push(id);
-        }
+    const payload = joinMode09(await elm.request("0904"), 0x04);
+    if (payload) {
+      // Calibration ID: блоки по 16 байт ASCII.
+      for (let i = 0; i < payload.length; i += 16) {
+        const id = chunkAscii(payload.slice(i, i + 16), 0);
+        if (id) info.calibrationIds.push(id);
       }
     }
   } catch {
@@ -195,12 +168,10 @@ export async function readMode09(elm: Elm327): Promise<Mode09Info> {
   }
 
   try {
-    for (const m of await elm.request("0906")) {
-      if (m.data[0] === 0x49 && m.data[1] === 0x06) {
-        const payload = m.data.slice(3);
-        for (let i = 0; i + 3 < payload.length; i += 4) {
-          info.cvn.push(payload.slice(i, i + 4).map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase());
-        }
+    const payload = joinMode09(await elm.request("0906"), 0x06);
+    if (payload) {
+      for (let i = 0; i + 3 < payload.length; i += 4) {
+        info.cvn.push(payload.slice(i, i + 4).map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase());
       }
     }
   } catch {
@@ -208,12 +179,8 @@ export async function readMode09(elm: Elm327): Promise<Mode09Info> {
   }
 
   try {
-    for (const m of await elm.request("090A")) {
-      if (m.data[0] === 0x49 && m.data[1] === 0x0a) {
-        info.ecuName = chunkAscii(m.data, 3);
-        break;
-      }
-    }
+    const payload = joinMode09(await elm.request("090A"), 0x0a);
+    if (payload) info.ecuName = chunkAscii(payload, 0);
   } catch {
     /* не поддерживается */
   }

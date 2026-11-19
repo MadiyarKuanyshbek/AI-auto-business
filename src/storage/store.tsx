@@ -1,7 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { VehicleScan } from "../core/scanner";
-import { EMPTY_DATA, newId, sanitizeData, vehicleTitle, type AppData, type Customer, type Job, type VehicleRec } from "./model";
+import { desktopBridge } from "../transport/desktop";
+import { EMPTY_DATA, newId, sanitizeData, vehicleTitle, type AppData, type Customer, type Job, type Settings, type VehicleRec } from "./model";
 
 const KEY = "autoflash.v1";
 const MAX_SCANS_PER_VEHICLE = 5;
@@ -20,6 +21,11 @@ type Store = {
   logJob(id: string, text: string): void;
   removeJob(id: string): void;
   setCatalogJson(json: unknown): void;
+  updateSettings(patch: Partial<Settings>): void;
+  /** Полная копия данных в виде JSON-текста (для резервной копии и переноса на другой компьютер). */
+  exportJson(): string;
+  /** Заменяет все данные содержимым копии. Возвращает false, если это не копия AutoFlash. */
+  importJson(json: string): boolean;
   resetAll(): void;
 };
 
@@ -52,6 +58,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       AsyncStorage.setItem(KEY, JSON.stringify(data)).catch(() => undefined);
     }, 400);
   }, [data, loaded]);
+
+  // Раз в день в настольном приложении пишем копию в «Документы\AutoFlash\Backups».
+  useEffect(() => {
+    if (!loaded) return;
+    const bridge = desktopBridge();
+    const today = new Date().toISOString().slice(0, 10);
+    if (!bridge || data.settings.lastBackupDay === today) return;
+    if (data.customers.length + data.vehicles.length + data.jobs.length === 0) return;
+    bridge.backup
+      .save(JSON.stringify({ app: "autoflash", version: 1, exportedAt: Date.now(), ...data }, null, 2))
+      .then(() => setData((d) => ({ ...d, settings: { ...d.settings, lastBackupDay: today } })))
+      .catch(() => undefined);
+  }, [loaded, data]);
 
   const mutate = useCallback((fn: (d: AppData) => AppData) => setData((d) => fn(d)), []);
 
@@ -117,6 +136,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       setCatalogJson(json) {
         mutate((d) => ({ ...d, catalogJson: json }));
+      },
+      updateSettings(patch) {
+        mutate((d) => ({ ...d, settings: { ...d.settings, ...patch } }));
+      },
+      exportJson() {
+        return JSON.stringify({ app: "autoflash", version: 1, exportedAt: Date.now(), ...dataRef.current }, null, 2);
+      },
+      importJson(json) {
+        try {
+          const raw = JSON.parse(json) as Record<string, unknown>;
+          if (raw?.app !== "autoflash" && !Array.isArray(raw?.customers)) return false;
+          const next = sanitizeData(raw);
+          dataRef.current = next;
+          setData(next);
+          return true;
+        } catch {
+          return false;
+        }
       },
       resetAll() {
         setData(EMPTY_DATA);

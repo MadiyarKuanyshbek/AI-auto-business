@@ -92,6 +92,30 @@ ipcMain.handle("tcp:write", (_e, { id, text }) =>
 
 ipcMain.on("tcp:close", (_e, { id }) => sockets.get(id)?.destroy());
 
+// ───────────── Резервные копии ─────────────
+function backupDir() {
+  // При самопроверке копии пишем во временную папку, а не в реальные «Документы».
+  const base = SELFTEST ? path.join(SELFTEST, "documents") : app.getPath("documents");
+  const dir = path.join(base, "AutoFlash", "Backups");
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+ipcMain.handle("backup:save", (_e, { json, name }) => {
+  if (typeof json !== "string" || json.length > 50 * 1024 * 1024) throw new Error("Некорректные данные копии");
+  const dir = backupDir();
+  const day = new Date().toISOString().slice(0, 10);
+  const safeName = typeof name === "string" && /^[\w.\-]+$/.test(name) ? name : `autoflash-${day}.json`;
+  const file = path.join(dir, safeName);
+  fs.writeFileSync(file, json, "utf8");
+  // Храним последние 30 копий.
+  const files = fs.readdirSync(dir).filter((f) => /^autoflash-.*\.json$/.test(f)).sort();
+  for (const old of files.slice(0, Math.max(0, files.length - 30))) fs.rmSync(path.join(dir, old), { force: true });
+  return file;
+});
+
+ipcMain.handle("backup:open-folder", () => shell.openPath(backupDir()));
+
 // ───────────── Окно ─────────────
 function createWindow() {
   win = new BrowserWindow({
@@ -114,6 +138,10 @@ function createWindow() {
 
   // Внешние ссылки (WhatsApp и т.п.) открываем в обычном браузере, а не внутри приложения.
   win.webContents.setWindowOpenHandler(({ url }) => {
+    // Пустое окно нужно для печати отчётов и квитанций (window.open("") → write → print).
+    if (url === "about:blank" || url === "") {
+      return { action: "allow", overrideBrowserWindowOptions: { autoHideMenuBar: true, width: 900, height: 800, webPreferences: { sandbox: true } } };
+    }
     if (/^https?:\/\//.test(url)) void shell.openExternal(url);
     return { action: "deny" };
   });

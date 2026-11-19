@@ -97,6 +97,50 @@ export function parseResponseLines(lines: string[]): EcuMessage[] {
   return messages;
 }
 
+/** Тип шины, на которой адаптер нашёл автомобиль (ATDPN). */
+export type BusKind = "can11" | "can29" | "kline" | "j1850" | "unknown";
+
+/** Номер протокола ELM327 (ATDPN, без префикса "A" авто-режима) → тип шины. */
+export function busKindFromProtocolId(id: string): BusKind {
+  const n = id.replace(/^A/i, "").trim().toUpperCase();
+  if (n === "6" || n === "8") return "can11";
+  if (n === "7" || n === "9" || n === "A" || n === "B" || n === "C") return "can29";
+  if (n === "3" || n === "4" || n === "5") return "kline";
+  if (n === "1" || n === "2") return "j1850";
+  return "unknown";
+}
+
+/**
+ * Разбор ответов по K-Line (ISO 9141-2 и KWP2000), адаптер выдаёт кадры целиком с заголовком:
+ *  - ISO 9141-2:  "48 6B 11 41 0C 1A F8 BA"   (заголовок 48 6B <источник>, данные, контрольная сумма)
+ *  - KWP2000:     "83 F1 10 5A 94 .. CS"      (формат 0x80|длина, получатель, источник, данные, сумма)
+ * Контрольная сумма отбрасывается. Многокадровые ответы остаются отдельными сообщениями (номер кадра внутри).
+ */
+export function parseKLineLines(lines: string[]): EcuMessage[] {
+  const out: EcuMessage[] = [];
+  for (const raw of lines) {
+    const tokens = raw.trim().toUpperCase().split(/\s+/);
+    if (tokens.length < 5 || !tokens.every(isHexByte)) continue;
+    const b = tokens.map((t) => parseInt(t, 16));
+    const hex = (v: number) => v.toString(16).padStart(2, "0").toUpperCase();
+
+    if (b[0] === 0x48 && b[1] === 0x6b) {
+      out.push({ ecu: hex(b[2]), data: b.slice(3, -1) });
+      continue;
+    }
+    if ((b[0] & 0xc0) === 0x80 || (b[0] & 0xc0) === 0xc0) {
+      let len = b[0] & 0x3f;
+      let start = 3;
+      if (len === 0) {
+        len = b[3];
+        start = 4;
+      }
+      out.push({ ecu: hex(b[2]), data: b.slice(start, start + len) });
+    }
+  }
+  return out;
+}
+
 export type InitInfo = { version: string; protocol: string; voltage: number | null };
 
 /** Драйвер ELM327-совместимого адаптера (BLE / Wi-Fi / симулятор — через Transport). */
@@ -108,6 +152,8 @@ export class Elm327 {
   /** Журнал обмена — показывается в экране диагностики и прикладывается к отчёту об ошибке. */
   readonly log: { t: number; dir: "tx" | "rx"; text: string }[] = [];
   private logMax = 400;
+  /** Шина авто; определяется после первого успешного запроса (detectBus). */
+  bus: BusKind = "can11";
 
   constructor(readonly transport: Transport) {}
 
@@ -201,21 +247,47 @@ export class Elm327 {
     return lines.join(" ").replace(/^AUTO,\s*/i, "");
   }
 
+  /** Номер протокола, найденный адаптером (ATDPN), и тип шины. Вызывать после первого запроса к авто. */
+  async detectBus(): Promise<{ id: string; bus: BusKind }> {
+    const lines = await this.at("ATDPN");
+    const id = lines.join("").replace(/\s/g, "");
+    this.bus = busKindFromProtocolId(id);
+    return { id, bus: this.bus };
+  }
+
   async voltage(): Promise<number | null> {
     const lines = await this.raw("ATRV");
     const m = lines.join(" ").match(/(\d+(?:\.\d+)?)\s*V/i);
     return m ? Number(m[1]) : null;
   }
 
-  /** Направляет запросы конкретному блоку и фильтрует ответы только от него. */
+  /**
+   * Направляет запросы конкретному блоку и фильтрует ответы только от него.
+   * CAN 11 бит: txId "7E0", rxId "7E8". CAN 29 бит: txId "18DA10F1", rxId "18DAF110".
+   * K-Line: txId — адрес блока ("10" — двигатель), rxId не используется.
+   */
   async target(txId: string, rxId: string) {
+    if (this.bus === "kline") {
+      await this.at(`ATSH81${txId}F1`); // формат KWP "81", получатель, источник тестера F1
+      return;
+    }
+    if (this.bus === "can29" && txId.length === 8) {
+      await this.at(`ATCP${txId.slice(0, 2)}`); // приоритет (18)
+      await this.at(`ATSH${txId.slice(2)}`);
+      await this.at(`ATCRA${rxId}`);
+      return;
+    }
     await this.at(`ATSH${txId}`);
     await this.at(`ATCRA${rxId}`);
   }
 
   async clearTarget() {
     await this.at("ATAR");
-    await this.at("ATSH7DF");
+    if (this.bus === "kline") await this.at("ATSH686AF1");
+    else if (this.bus === "can29") {
+      await this.at("ATCP18");
+      await this.at("ATSHDB33F1");
+    } else await this.at("ATSH7DF");
   }
 
   /**
@@ -226,7 +298,7 @@ export class Elm327 {
     const lines = await this.raw(payloadHex, timeoutMs);
     this.throwIfError(lines);
     const clean = lines.filter((l) => !NOISE.some((n) => n.test(l.toUpperCase())));
-    const messages = parseResponseLines(clean);
+    const messages = this.bus === "kline" ? parseKLineLines(clean) : parseResponseLines(clean);
     if (messages.length === 0) throw new AdapterError("Нет ответа от блока", "no_data");
     return messages;
   }

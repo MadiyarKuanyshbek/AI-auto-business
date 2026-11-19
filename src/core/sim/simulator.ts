@@ -10,6 +10,8 @@ export type SimEcu = {
   obd?: boolean;
   /** UDS DID → значение (ASCII-строка или байты). */
   dids?: Record<number, string | number[]>;
+  /** KWP2000 (K-Line): локальный идентификатор службы 0x1A → значение. */
+  kwpIdent?: Record<number, string>;
   dtcs?: string[]; // "P0171"
   /** Задержка ответа в мс (для проверки таймаутов). */
   delayMs?: number;
@@ -17,6 +19,10 @@ export type SimEcu = {
 
 export type SimVehicle = {
   label: string;
+  /** Шина: CAN 11 бит (по умолчанию), CAN 29 бит или K-Line (ISO 9141-2 / KWP2000). */
+  bus?: "can11" | "can29" | "kline";
+  /** Для K-Line: "iso9141" (кадры 48 6B, VIN в 4-байтовых кадрах) или "kwp" (кадры 8N F1). */
+  klineKind?: "iso9141" | "kwp";
   vin: string;
   voltage: number;
   /** Текущие данные режима 01: PID → сырые байты. */
@@ -60,6 +66,31 @@ function isoTpLines(rxId: string, payload: number[]): string[] {
   return lines;
 }
 
+function checksum(bytes: number[]): number {
+  return bytes.reduce((a, b) => (a + b) & 0xff, 0);
+}
+
+/** Кадры K-Line так, как их печатает ELM327 при ATH1. */
+function kLineLines(kind: "iso9141" | "kwp", addr: string, payload: number[]): string[] {
+  const src = parseInt(addr, 16);
+  if (kind === "kwp") {
+    const frame = [0x80 | payload.length, 0xf1, src, ...payload];
+    return [bytesToHex([...frame, checksum(frame)])];
+  }
+  // ISO 9141-2: данные режима 09 идут кадрами по 4 байта с номером кадра; остальное — одним кадром.
+  const mk = (data: number[]) => {
+    const frame = [0x48, 0x6b, src, ...data];
+    return bytesToHex([...frame, checksum(frame)]);
+  };
+  if (payload[0] === 0x49 && payload.length > 7) {
+    const [svc, pid, , ...rest] = payload;
+    const lines: string[] = [];
+    for (let i = 0, n = 1; i < rest.length; i += 4, n++) lines.push(mk([svc, pid, n, ...rest.slice(i, i + 4)]));
+    return lines;
+  }
+  return [mk(payload)];
+}
+
 function supportedMask(base: number, supported: number[]): number[] {
   let mask = 0;
   for (const pid of supported) {
@@ -81,6 +112,7 @@ export class SimulatedAdapter implements Transport {
   private closeListeners = new Set<() => void>();
   private connected = false;
   private header = "7DF";
+  private priority = "18";
   private rxFilter: string | null = null;
   private echo = true;
   /** Команды, по которым симулятор "не отвечает" — для тестов таймаутов. */
@@ -134,16 +166,17 @@ export class SimulatedAdapter implements Transport {
     const request = [] as number[];
     for (let i = 0; i < upper.length; i += 2) request.push(parseInt(upper.slice(i, i + 2), 16));
 
-    const targets = this.vehicle.ecus.filter((e) =>
-      this.header === "7DF" ? e.obd : e.txId === this.header,
-    );
+    const functional = this.header === "7DF" || this.header === "FUNC";
+    const targets = this.vehicle.ecus.filter((e) => (functional ? e.obd : e.txId === this.header));
+    const bus = this.vehicle.bus ?? "can11";
     const lines: string[] = [];
     let delay = 0;
     for (const ecu of targets) {
-      if (this.rxFilter && this.rxFilter !== ecu.rxId) continue;
+      if (this.rxFilter && bus !== "kline" && this.rxFilter !== ecu.rxId) continue;
       const payload = this.respond(ecu, request);
       if (payload) {
-        lines.push(...isoTpLines(ecu.rxId, payload));
+        if (bus === "kline") lines.push(...kLineLines(this.vehicle.klineKind ?? "kwp", ecu.txId, payload));
+        else lines.push(...isoTpLines(ecu.rxId, payload));
         delay = Math.max(delay, ecu.delayMs ?? 0);
       }
     }
@@ -169,9 +202,24 @@ export class SimulatedAdapter implements Transport {
     if (upper === "ATI") return this.out(cmd, ["ELM327 v1.5 (simulated)"]);
     if (upper === "ATRV") return this.out(cmd, [`${this.vehicle.voltage.toFixed(1)}V`]);
     if (upper === "ATDP") return this.out(cmd, ["ISO 15765-4 (CAN 11/500)"]);
-    if (upper === "ATDPN") return this.out(cmd, ["A6"]);
+    if (upper === "ATDPN") {
+      const v = this.vehicle;
+      return this.out(cmd, [v.bus === "can29" ? "A7" : v.bus === "kline" ? (v.klineKind === "iso9141" ? "A3" : "A5") : "A6"]);
+    }
+    if (upper.startsWith("ATCP")) {
+      this.priority = upper.slice(4);
+      return ok;
+    }
     if (upper.startsWith("ATSH")) {
-      this.header = upper.slice(4).padStart(3, "0");
+      const arg = upper.slice(4);
+      if (this.vehicle.bus === "kline") {
+        // "8110F1" (KWP: формат, получатель, источник) или "686AF1" (функциональный адрес)
+        this.header = arg === "686AF1" ? "FUNC" : arg.slice(2, 4);
+      } else if (this.vehicle.bus === "can29") {
+        this.header = arg === "DB33F1" ? "FUNC" : `${this.priority}${arg}`;
+      } else {
+        this.header = arg.padStart(3, "0");
+      }
       return ok;
     }
     if (upper.startsWith("ATCRA")) {
@@ -200,6 +248,12 @@ export class SimulatedAdapter implements Transport {
 
     if ((service === 0x03 || service === 0x07 || service === 0x0a) && ecu.obd) {
       const dtcs = service === 0x03 ? (ecu.dtcs ?? []) : [];
+      // CAN: второй байт — число кодов. K-Line/J1850: числа нет, сразу пары (ответ дополняется нулями до 3 пар).
+      if (v.bus === "kline") {
+        const pairs = dtcs.flatMap(dtcToBytes);
+        while (pairs.length % 6) pairs.push(0);
+        return [service + 0x40, ...(pairs.length ? pairs : [0, 0, 0, 0, 0, 0])];
+      }
       return [service + 0x40, dtcs.length, ...dtcs.flatMap(dtcToBytes)];
     }
 
@@ -226,6 +280,11 @@ export class SimulatedAdapter implements Transport {
       if (value === undefined) return [0x7f, 0x22, 0x31];
       const bytes = typeof value === "string" ? asciiToBytes(value) : value;
       return [0x62, req[1], req[2], ...bytes];
+    }
+
+    if (service === 0x1a) {
+      const value = ecu.kwpIdent?.[a];
+      return value === undefined ? [0x7f, 0x1a, 0x12] : [0x5a, a, ...asciiToBytes(value)];
     }
 
     if (service === 0x3e) return [0x7e, 0x00];

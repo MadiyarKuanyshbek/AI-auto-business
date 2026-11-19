@@ -4,11 +4,14 @@ import { View } from "react-native";
 import { analyzeScan, identifyFamily } from "../../core/catalog";
 import { clearDtcs } from "../../core/obd";
 import { IDENT_DIDS } from "../../core/uds";
+import { buildComparisonHtml, buildComparisonText } from "../../core/reportExtra";
 import { resolveModelYear } from "../../core/vin";
 import { useSession } from "../../session";
 import { useStore } from "../../storage/store";
 import { vehicleTitle } from "../../storage/model";
 import { Badge, Body, Button, Card, Empty, H1, H2, Muted, Row, Screen, colors } from "../../ui/kit";
+import { LivePanel } from "../../ui/LivePanel";
+import { printHtml } from "../../ui/print";
 
 export default function VehicleScreen() {
   const router = useRouter();
@@ -127,8 +130,23 @@ export default function VehicleScreen() {
         <Muted key={i}>• {w}</Muted>
       ))}
 
-      <Button title="Данные в реальном времени" onPress={() => router.push("/live")} />
+      <H2>Данные в реальном времени</H2>
+      <LivePanel />
+
       <Button title="Что можно улучшить" onPress={() => router.push("/tune")} />
+      {vehicle && vehicle.scans.length >= 2 ? (
+        <Button
+          title="Отчёт «до и после» (первое и последнее сканирование)"
+          kind="ghost"
+          onPress={() => {
+            const first = vehicle.scans[0];
+            const last = vehicle.scans[vehicle.scans.length - 1];
+            void printHtml(buildComparisonHtml(first, last, { workshop: store.data.settings.workshopName }), buildComparisonText(first, last));
+          }}
+        />
+      ) : (
+        <Muted>Отчёт «до и после» появится после второго сканирования этого авто.</Muted>
+      )}
       <Button title="Создать заказ для этого авто" kind="ghost" onPress={createJob} />
       <Button title="Просканировать заново" kind="ghost" onPress={() => void runScan()} loading={scanning} />
     </Screen>

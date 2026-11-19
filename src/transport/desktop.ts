@@ -12,6 +12,10 @@ export type DesktopBridge = {
     onData(cb: (id: number, text: string) => void): () => void;
     onClose(cb: (id: number) => void): () => void;
   };
+  backup: {
+    save(json: string, name?: string): Promise<string>;
+    openFolder(): Promise<string>;
+  };
   chooser: {
     onList(cb: (payload: { kind: ChooserKind; devices: ChooserDevice[] }) => void): () => void;
     pick(kind: ChooserKind, id: string | null): void;

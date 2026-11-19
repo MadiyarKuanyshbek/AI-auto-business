@@ -7,15 +7,14 @@ const icon = (glyph: string) =>
     return <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.55 }}>{glyph}</Text>;
   };
 
-/** Пункты меню по порядку рабочего процесса мастера: подключился → увидел авто → данные → доработки → заказы. */
+/** Пункты меню по порядку рабочего процесса мастера: подключился → увидел авто и данные → доработки → заказы. */
 /** hasStack — у раздела свой вложенный стек (детали с кнопкой «Назад»), заголовок рисует он сам. */
 const SCREENS = [
   { name: "index", title: "Подключение", step: 1, glyph: "🔌" },
   { name: "vehicle", title: "Авто", step: 2, glyph: "🚗" },
-  { name: "live", title: "Живые данные", step: 3, glyph: "📈" },
-  { name: "tune", title: "Прошивки", step: 4, glyph: "⚙️", hasStack: true },
-  { name: "clients", title: "Клиенты и заказы", step: 5, glyph: "👥", hasStack: true },
-  { name: "settings", title: "Настройки", step: 6, glyph: "☰" },
+  { name: "tune", title: "Прошивки", step: 3, glyph: "⚙️", hasStack: true },
+  { name: "clients", title: "Клиенты и заказы", step: 4, glyph: "👥", hasStack: true },
+  { name: "settings", title: "Настройки", step: 5, glyph: "☰" },
 ] as const;
 
 export default function TabsLayout() {

@@ -111,3 +111,39 @@ export async function readIdentification(elm: Elm327): Promise<{ ident: EcuIdent
   }
   return { ident, refused };
 }
+
+// ───────────── KWP2000 (K-Line, авто примерно до 2008 г.) ─────────────
+
+/** Локальные идентификаторы службы 0x1A (ReadECUIdentification, ISO 14230-3). */
+export const KWP_IDENT_OPTIONS: { option: number; key: IdentKey }[] = [
+  { option: 0x90, key: "vin" },
+  { option: 0x91, key: "hardwareNumber" },
+  { option: 0x92, key: "supplierHardwareNumber" },
+  { option: 0x93, key: "supplierHardwareVersion" },
+  { option: 0x94, key: "supplierSoftwareNumber" },
+  { option: 0x95, key: "supplierSoftwareVersion" },
+  { option: 0x97, key: "systemName" },
+  { option: 0x99, key: "manufacturingDate" },
+];
+
+/** Читает идентификацию блока по KWP2000. Недоступные пункты пропускает. */
+export async function readKwpIdentification(elm: Elm327): Promise<{ ident: EcuIdent; refused: number }> {
+  const ident: EcuIdent = {};
+  let refused = 0;
+  for (const { option, key } of KWP_IDENT_OPTIONS) {
+    try {
+      const messages = await elm.request(`1A${option.toString(16).toUpperCase()}`);
+      const positive = messages.find((m) => m.data[0] === 0x5a && m.data[1] === option);
+      if (positive) {
+        const text = bytesToAscii(positive.data.slice(2).filter((b) => b !== 0 && b !== 0xff));
+        if (text) ident[key] = text;
+      } else if (messages.some((m) => m.data[0] === 0x7f && m.data[1] === 0x1a)) {
+        refused++;
+      }
+    } catch (e) {
+      if (e instanceof AdapterError && (e.code === "no_data" || e.code === "timeout")) continue;
+      throw e;
+    }
+  }
+  return { ident, refused };
+}

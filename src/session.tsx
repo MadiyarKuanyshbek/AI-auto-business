@@ -39,6 +39,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [progress, setProgress] = useState<Session["progress"]>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const elmRef = useRef<Elm327 | null>(null);
+  const kindRef = useRef<Transport["kind"] | null>(null);
   const [elmState, setElmState] = useState<Elm327 | null>(null);
 
   // После перезапуска показываем последнее сохранённое сканирование (без подключения к авто).
@@ -47,7 +48,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [store.data.vehicles],
   );
 
-  const catalog = useMemo(() => [...DEMO_CATALOG, ...parseCatalog(store.data.catalogJson)], [store.data.catalogJson]);
+  const showDemo = store.data.settings.showDemo;
+  const catalog = useMemo(
+    () => [...(showDemo ? DEMO_CATALOG : []), ...parseCatalog(store.data.catalogJson)],
+    [showDemo, store.data.catalogJson],
+  );
 
   const disconnect = useCallback(async () => {
     const elm = elmRef.current;
@@ -73,6 +78,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           }
         });
         elmRef.current = elm;
+        kindRef.current = transport.kind;
         setElmState(elm);
         setConnection({ status: "ready", label: transport.label, kind: transport.kind });
         return true;
@@ -100,6 +106,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const result = await scanVehicle(elm, { onProgress: (step, fraction) => setProgress({ step, fraction }) });
       setScan(result);
       store.saveScan(result);
+      // Первый скан настоящего авто: демо-режим и демо-позиции больше не нужны клиенту — прячем.
+      if (kindRef.current !== "demo" && !store.data.settings.hadRealScan) {
+        store.updateSettings({ hadRealScan: true, showDemo: false });
+      }
       return result;
     } catch (e) {
       setScanError(e instanceof Error ? e.message : "Не удалось просканировать авто");

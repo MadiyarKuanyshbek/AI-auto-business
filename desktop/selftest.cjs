@@ -101,7 +101,7 @@ async function run(win, outDir, app) {
 
     // ── Меню слева, по порядку ──
     const nav = await js(`(() => {
-      const names = ['1. Подключение','2. Авто','3. Живые данные','4. Прошивки','5. Клиенты и заказы','6. Настройки'];
+      const names = ['1. Подключение','2. Авто','3. Прошивки','4. Клиенты и заказы','5. Настройки'];
       return names.map(n => {
         const el = [...document.querySelectorAll('div,span')].filter(e => e.textContent.trim() === n && e.children.length === 0)[0];
         if (!el) return null;
@@ -111,7 +111,7 @@ async function run(win, outDir, app) {
     })()`);
     const found = nav.every(Boolean);
     const leftAligned = found && nav.every((p) => p.x < 260) && nav.every((p, i) => i === 0 || p.y > nav[i - 1].y);
-    step("меню слева вертикально по порядку (6 пунктов)", leftAligned, JSON.stringify(nav));
+    step("меню слева вертикально по порядку (5 пунктов)", leftAligned, JSON.stringify(nav));
 
     // ── Подключение по Wi-Fi (TCP) ──
     step("вкладка Wi-Fi", await click("Wi‑Fi"));
@@ -136,6 +136,7 @@ async function run(win, outDir, app) {
     step("семейство Bosch EDC17 распознано", v.includes("Bosch EDC17"));
     step("номер ПО поставщика считан", v.includes("1037525811"));
     step("Calibration ID считан", v.includes("03L906018FQ 0258"));
+    step("справочник: описание P0299 из базы", v.includes("Недостаточный наддув (турбина)"));
     step("код P0299 показан с описанием", v.includes("P0299") && v.includes("Недостаточный наддув"));
     await shot("03-vehicle");
 
@@ -146,26 +147,42 @@ async function run(win, outDir, app) {
     step("подтверждение сброса", await click("Да, сбросить"));
     step("после сброса ошибок нет", await waitText("Кодов неисправностей нет", 20000));
 
-    // ── Живые данные ──
-    await goTo("3. Живые данные", "live");
+    // ── Живые данные внутри карточки авто ──
+    step("кнопка живых данных", await click("Показать живые данные"));
     step("живые данные: обороты 800", await waitText(/Обороты двигателя\s+800\s+об\/мин/, 15000));
     step("живые данные: температура ОЖ 55", await waitText(/Температура ОЖ\s+55\s+°C/, 15000));
     await sleep(1200);
     await shot("05-live");
 
-    // ── Опрос живых данных не должен идти в фоне ──
-    await goTo("2. Авто", "vehicle");
+    // ── Опрос живых данных не должен идти в фоне (включён на «Авто», уходим на другую вкладку) ──
+    await goTo("3. Прошивки", "tune");
     await sleep(1500);
     const rx1 = await js("window.__rx");
     await sleep(2500);
     const rx2 = await js("window.__rx");
-    step("вне вкладки «Живые данные» адаптер не опрашивается", rx2 === rx1, `${rx1} → ${rx2}`);
-    await click("3. Живые данные");
+    step("вне экрана «Авто» адаптер не опрашивается", rx2 === rx1, `${rx1} → ${rx2}`);
+    await goTo("2. Авто", "vehicle");
     await sleep(2000);
-    step("при возврате на вкладку опрос возобновляется", (await js("window.__rx")) > rx2);
+    step("при возврате опрос возобновляется", (await js("window.__rx")) > rx2);
+
+    // ── После скана настоящего авто демо-позиции скрыты; включаем их переключателем для проверки подбора ──
+    await goTo("5. Настройки", "settings");
+    step("демо-позиции скрыты после скана настоящего авто (в каталоге 0)", await waitText(/Позиций в каталоге\s+0/, 4000));
+    const sw = await js(`(() => {
+      const el = document.querySelector('[role="switch"], input[type="checkbox"]');
+      if (!el) return null;
+      el.scrollIntoView({ block: 'center' });
+      const r = el.getBoundingClientRect();
+      return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+    })()`);
+    if (sw) {
+      wc.sendInputEvent({ type: "mouseDown", x: sw.x, y: sw.y, button: "left", clickCount: 1 });
+      wc.sendInputEvent({ type: "mouseUp", x: sw.x, y: sw.y, button: "left", clickCount: 1 });
+    }
+    step("переключатель демо возвращает 3 демо-позиции", await waitText(/Позиций в каталоге\s+3/, 4000));
 
     // ── Прошивки ──
-    await goTo("4. Прошивки", "tune");
+    await goTo("3. Прошивки", "tune");
     const tune = await waitText("Stage 1");
     step("подбор: найден Stage 1 для EDC17", tune);
     step("подбор: найдена позиция DSG", (await text()).includes("DSG"));
@@ -180,13 +197,13 @@ async function run(win, outDir, app) {
     await click("Сохранить копию оригинальной прошивки");
     step("резервная копия делается на симуляции", await waitText("Копия оригинала сохранена"));
     await shot("07-flash");
-    step("меню слева остаётся на экране прошивки", (await text()).includes("5. Клиенты и заказы"));
+    step("меню слева остаётся на экране прошивки", (await text()).includes("4. Клиенты и заказы"));
     step("стрелка «Назад» есть в заголовке", await js("!!document.querySelector('[aria-label=\"Прошивки, back\"], [aria-label*=\"back\" i], [aria-label*=\"Назад\"]')"));
     await js("history.back()");
     step("возврат к подбору работает", await waitText("Что можно сделать с этим авто"));
 
     // ── Клиенты и заказы ──
-    await goTo("5. Клиенты и заказы", "clients");
+    await goTo("4. Клиенты и заказы", "clients");
     step("раздел клиентов открыт", await waitText("Получено"));
     await click("Клиенты (0)");
     await click("Добавить клиента");
@@ -194,7 +211,7 @@ async function run(win, outDir, app) {
     step("телефон введён", await fill("Телефон", "+7 700 123 45 67"));
     await click("Сохранить");
     step("карточка клиента открылась", await waitText("Новый заказ для клиента", 6000));
-    step("меню слева остаётся на карточке клиента", (await text()).includes("6. Настройки"));
+    step("меню слева остаётся на карточке клиента", (await text()).includes("5. Настройки"));
     await shot("08-customer");
     await click("Новый заказ для клиента");
     step("заказ создан", await waitText("История", 6000));
@@ -208,8 +225,14 @@ async function run(win, outDir, app) {
     step("данные сохранены на диск", !!stored && stored.includes("Тест Клиентов") && stored.includes("90000"));
 
     // ── Настройки: импорт каталога ──
-    await goTo("6. Настройки", "settings");
+    await goTo("5. Настройки", "settings");
     step("настройки открыты", await waitText("Каталог прошивок"));
+    step("название мастерской введено", await fill("Название (в отчётах и квитанциях)", "Мастерская Тест"));
+    step("сохранение резервной копии", await click("Сохранить копию сейчас"));
+    step("копия записана на диск", await waitText("Копия сохранена", 5000));
+    const backupDir = path.join(outDir, "documents", "AutoFlash", "Backups");
+    const backups = fs.existsSync(backupDir) ? fs.readdirSync(backupDir) : [];
+    step("файл копии существует и содержит клиента", backups.length > 0 && fs.readFileSync(path.join(backupDir, backups[0]), "utf8").includes("Тест Клиентов"), backups.join(","));
     step("JSON каталога введён", await fill("JSON каталога", JSON.stringify([{ id: "x1", title: "Тестовая позиция", category: "economy", status: "beta", compat: { familyIds: ["bosch-edc17"] } }])));
     await click("Загрузить");
     step("каталог загружен", await waitText("Загружено позиций: 1"));
@@ -218,26 +241,55 @@ async function run(win, outDir, app) {
     step("журнал обмена показывает команды", await waitText(/→ 01/, 3000));
 
     // ── Новая позиция каталога видна в подборе ──
-    await goTo("4. Прошивки", "tune");
+    await goTo("3. Прошивки", "tune");
     step("импортированная позиция в подборе", await waitText("Тестовая позиция"));
 
     // ── Отключение ──
+    // Выключаем показ демо обратно (как его выключает приложение само после первого настоящего скана).
+    await goTo("5. Настройки", "settings");
+    const sw2 = await js(`(() => {
+      const el = document.querySelector('[role="switch"], input[type="checkbox"]');
+      if (!el) return null;
+      el.scrollIntoView({ block: 'center' });
+      const r = el.getBoundingClientRect();
+      return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+    })()`);
+    if (sw2) {
+      wc.sendInputEvent({ type: "mouseDown", x: sw2.x, y: sw2.y, button: "left", clickCount: 1 });
+      wc.sendInputEvent({ type: "mouseUp", x: sw2.x, y: sw2.y, button: "left", clickCount: 1 });
+    }
+    await sleep(500);
     await goTo("1. Подключение", "/");
     await click("Отключиться");
     step("отключение", await waitText("Не подключён"));
+    const connectText = await text();
+    const connectLines = connectText.split(String.fromCharCode(10)).map((t) => t.trim());
+    step("вкладка «Демо» скрыта после выключения демо", !connectLines.includes("Демо"), connectLines.slice(14, 40).join(" | "));
+    step("подсказка «Какой адаптер взять» скрыта", !connectText.includes("Какой адаптер взять"));
     await shot("11-disconnected");
 
     // ── Перезапуск страницы: данные клиента остаются ──
     await js("location.reload()");
     await sleep(3000);
-    await goTo("5. Клиенты и заказы", "clients");
+    await goTo("4. Клиенты и заказы", "clients");
     await click("Клиенты (1)");
     step("после перезапуска клиент на месте", await waitText("Тест Клиентов", 6000));
     await goTo("2. Авто", "vehicle");
     step("после перезапуска последний скан показан", await waitText("WVWZZZ1KZBW123456", 6000));
-    await goTo("4. Прошивки", "tune");
+    await goTo("3. Прошивки", "tune");
     step("импортированный каталог пережил перезапуск", await waitText("Тестовая позиция", 6000));
 
+
+    // ── Восстановление из копии ──
+    await goTo("5. Настройки", "settings");
+    const backup = JSON.stringify({ app: "autoflash", version: 1, customers: [{ id: "c9", name: "Из копии", phone: "", notes: "", createdAt: 1 }], vehicles: [], jobs: [] });
+    step("вставка содержимого копии", await fill("Или вставьте содержимое копии", backup));
+    await click("Восстановить из вставленного текста");
+    step("данные восстановлены из копии", await waitText("Данные восстановлены из копии"));
+    await goTo("4. Клиенты и заказы", "clients");
+    await click("Клиенты (1)");
+    step("клиент из копии появился, старые данные заменены", (await waitText("Из копии", 4000)) && !(await text()).includes("Тест Клиентов"));
+    await shot("12-restored");
   } catch (e) {
     step("исключение", false, String(e && e.message ? e.message : e));
   }

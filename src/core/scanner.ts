@@ -1,7 +1,8 @@
 import { Elm327 } from "./elm327";
 import { AdapterError } from "./transport";
 import { readDtcs, readMode09, readSupportedPids, type Dtc, type Mode09Info } from "./obd";
-import { readIdentification, type EcuIdent } from "./uds";
+import { readIdentification, readKwpIdentification, type EcuIdent } from "./uds";
+import type { BusKind } from "./elm327";
 import { decodeVinOffline, decodeVinOnline, type VinInfo, type VinOnline } from "./vin";
 
 export type ScannedEcu = {
@@ -15,7 +16,7 @@ export type ScannedEcu = {
 
 export type VehicleScan = {
   scannedAt: number;
-  adapter: { version: string; voltage: number | null; protocol: string };
+  adapter: { version: string; voltage: number | null; protocol: string; bus: BusKind };
   vin?: string;
   vinInfo?: VinInfo;
   vinOnline?: VinOnline | null;
@@ -38,6 +39,24 @@ export const CANDIDATE_ECUS: { name: string; txId: string; rxId: string }[] = [
   { name: "Блок 8", txId: "7E7", rxId: "7EF" },
 ];
 
+/** 29-битная адресация ISO 15765-4: запрос 18DA<блок>F1, ответ 18DAF1<блок>. */
+export const CANDIDATE_ECUS_29: { name: string; txId: string; rxId: string }[] = [
+  { name: "Двигатель", txId: "18DA10F1", rxId: "18DAF110" },
+  { name: "Двигатель 2", txId: "18DA11F1", rxId: "18DAF111" },
+  { name: "Коробка передач", txId: "18DA18F1", rxId: "18DAF118" },
+  { name: "Блок 0x17", txId: "18DA17F1", rxId: "18DAF117" },
+  { name: "Блок 0x28", txId: "18DA28F1", rxId: "18DAF128" },
+  { name: "Блок 0x19", txId: "18DA19F1", rxId: "18DAF119" },
+];
+
+/** K-Line: адреса блоков KWP2000 (адрес — первый "txId", rxId не нужен). */
+export const CANDIDATE_ECUS_KLINE: { name: string; txId: string; rxId: string }[] = [
+  { name: "Двигатель", txId: "10", rxId: "" },
+  { name: "Коробка передач", txId: "18", rxId: "" },
+  { name: "ABS/ESP", txId: "28", rxId: "" },
+  { name: "Блок 0x17 (приборы)", txId: "17", rxId: "" },
+];
+
 export type ScanProgress = (step: string, fraction: number) => void;
 
 /**
@@ -53,7 +72,7 @@ export async function scanVehicle(
 
   progress("Подключение к адаптеру", 0.02);
   const init = await elm.init();
-  const adapter = { version: init.version, voltage: init.voltage, protocol: "—" };
+  const adapter: VehicleScan["adapter"] = { version: init.version, voltage: init.voltage, protocol: "—", bus: "unknown" };
   if (init.voltage !== null && init.voltage < 11.8) {
     warnings.push(`Низкое напряжение бортсети (${init.voltage.toFixed(1)} В): запустите двигатель или подключите зарядное устройство.`);
   }
@@ -63,8 +82,12 @@ export async function scanVehicle(
   let supportedPids: number[] = [];
   let dtcs: Dtc[] = [];
   try {
-    supportedPids = [...(await readSupportedPids(elm))].sort((a, b) => a - b);
+    // Первый запрос запускает поиск протокола (по K-Line это инициализация до ~10 с). Шину нужно знать
+    // ДО разбора ответов: формат кадров у CAN и K-Line разный.
+    await elm.raw("0100", 20000).catch(() => undefined);
+    adapter.bus = (await elm.detectBus().catch(() => ({ bus: "unknown" as BusKind }))).bus;
     adapter.protocol = await elm.protocol().catch(() => "—");
+    supportedPids = [...(await readSupportedPids(elm))].sort((a, b) => a - b);
     mode09 = await readMode09(elm);
     progress("Чтение ошибок", 0.3);
     dtcs = [...(await readDtcs(elm, "stored")), ...(await readDtcs(elm, "pending")), ...(await readDtcs(elm, "permanent"))];
@@ -77,12 +100,13 @@ export async function scanVehicle(
 
   const ecus: ScannedEcu[] = [];
   let index = 0;
-  for (const cand of CANDIDATE_ECUS) {
+  const candidates = adapter.bus === "can29" ? CANDIDATE_ECUS_29 : adapter.bus === "kline" ? CANDIDATE_ECUS_KLINE : CANDIDATE_ECUS;
+  for (const cand of candidates) {
     index++;
-    progress(`Опрос блока ${cand.txId}`, 0.35 + (0.55 * index) / CANDIDATE_ECUS.length);
+    progress(`Опрос блока ${cand.txId}`, 0.35 + (0.55 * index) / candidates.length);
     try {
       await elm.target(cand.txId, cand.rxId);
-      const { ident, refused } = await readIdentification(elm);
+      const { ident, refused } = adapter.bus === "kline" ? await readKwpIdentification(elm) : await readIdentification(elm);
       if (Object.keys(ident).length > 0 || refused > 0) {
         ecus.push({ ...cand, name: ident.systemName ? `${cand.name} · ${ident.systemName}` : cand.name, ident, refused });
       }
@@ -92,6 +116,22 @@ export async function scanVehicle(
     }
   }
   await elm.clearTarget().catch(() => undefined);
+
+  // Старые авто (ISO 9141-2) и блоки без UDS/KWP-идентификации отдают только данные OBD-II:
+  // собираем из них запись о двигателе, чтобы подбор по номеру калибровки всё равно работал.
+  if (ecus.length === 0 && (mode09.calibrationIds.length > 0 || mode09.vin)) {
+    ecus.push({
+      name: "Двигатель (данные OBD-II)",
+      txId: "OBD",
+      rxId: "",
+      ident: {
+        ...(mode09.calibrationIds[0] ? { softwareNumber: mode09.calibrationIds[0] } : {}),
+        ...(mode09.ecuName ? { systemName: mode09.ecuName } : {}),
+        ...(mode09.vin ? { vin: mode09.vin } : {}),
+      },
+      refused: 0,
+    });
+  }
 
   // VIN: сначала OBD, затем идентификатор F190 любого блока.
   const vin = mode09.vin ?? ecus.map((e) => e.ident.vin).find((v) => v && v.length >= 11);

@@ -22,6 +22,10 @@ contextBridge.exposeInMainWorld("autoflash", {
       return () => closeListeners.delete(cb);
     },
   },
+  backup: {
+    save: (json, name) => ipcRenderer.invoke("backup:save", { json, name }),
+    openFolder: () => ipcRenderer.invoke("backup:open-folder"),
+  },
   chooser: {
     onList: (cb) => {
       const handler = (_e, payload) => cb(payload);

@@ -40,7 +40,27 @@ export type Job = {
   log: { t: number; text: string }[];
 };
 
+export type Settings = {
+  workshopName: string;
+  workshopPhone: string;
+  /** Показывать демо-автомобили и демо-позиции каталога. После первого скана реального авто выключается сам. */
+  showDemo: boolean;
+  /** Хотя бы раз сканировали настоящий автомобиль (не демо). */
+  hadRealScan: boolean;
+  /** Дата последней автоматической резервной копии (ГГГГ-ММ-ДД). */
+  lastBackupDay: string;
+};
+
+export const DEFAULT_SETTINGS: Settings = {
+  workshopName: "",
+  workshopPhone: "",
+  showDemo: true,
+  hadRealScan: false,
+  lastBackupDay: "",
+};
+
 export type AppData = {
+  settings: Settings;
   customers: Customer[];
   vehicles: VehicleRec[];
   jobs: Job[];
@@ -48,7 +68,7 @@ export type AppData = {
   catalogJson: unknown;
 };
 
-export const EMPTY_DATA: AppData = { customers: [], vehicles: [], jobs: [], catalogJson: [] };
+export const EMPTY_DATA: AppData = { settings: DEFAULT_SETTINGS, customers: [], vehicles: [], jobs: [], catalogJson: [] };
 
 export const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
@@ -56,7 +76,15 @@ export const newId = () => `${Date.now().toString(36)}${Math.random().toString(3
 export function sanitizeData(raw: unknown): AppData {
   const r = (raw ?? {}) as Partial<AppData>;
   const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v.filter((x) => x && typeof x === "object") as T[]) : []);
+  const st = (r.settings ?? {}) as Partial<Settings>;
   return {
+    settings: {
+      workshopName: typeof st.workshopName === "string" ? st.workshopName : "",
+      workshopPhone: typeof st.workshopPhone === "string" ? st.workshopPhone : "",
+      showDemo: typeof st.showDemo === "boolean" ? st.showDemo : true,
+      hadRealScan: st.hadRealScan === true,
+      lastBackupDay: typeof st.lastBackupDay === "string" ? st.lastBackupDay : "",
+    },
     customers: arr<Customer>(r.customers),
     vehicles: arr<VehicleRec>(r.vehicles).map((v) => ({ ...v, scans: Array.isArray(v.scans) ? v.scans : [] })),
     jobs: arr<Job>(r.jobs).map((j) => ({ ...j, log: Array.isArray(j.log) ? j.log : [] })),

@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "AutoFlash",
+    "slug": "autoflash",
+    "scheme": "autoflash",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "kz.autoflash.app",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "Нужен для подключения к OBD-адаптеру автомобиля",
+        "NSLocalNetworkUsageDescription": "Нужен для подключения к Wi-Fi OBD-адаптеру"
+      }
+    },
+    "android": {
+      "package": "kz.autoflash.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0B1220",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "bluetoothAlwaysPermission": "Нужен для подключения к OBD-адаптеру автомобиля"
+        }
+      ],
+      "expo-sharing",
+      "expo-document-picker"
+    ]
+  }
+}

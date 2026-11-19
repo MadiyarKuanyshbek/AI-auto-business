@@ -42,3 +42,5 @@ yarn-error.*
 
 # Vercel (old project link)
 .vercel
+.claude/scheduled_tasks.lock
+dist-check/

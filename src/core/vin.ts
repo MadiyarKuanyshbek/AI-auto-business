@@ -151,3 +151,13 @@ export async function decodeVinOnline(vin: string, fetchImpl: typeof fetch = fet
     return null;
   }
 }
+
+/**
+ * Модельный год: для авто из Северной Америки доверяем NHTSA (там правило по 7-му символу),
+ * для остальных регионов — офлайн-расчёту: NHTSA применяет американское правило и для
+ * европейских VIN даёт неверные годы (например 1981 вместо 2011).
+ */
+export function resolveModelYear(offline: VinInfo | undefined, online: VinOnline | null | undefined): number | undefined {
+  const northAmerica = !!offline?.vin && /^[1-5]/.test(offline.vin);
+  return northAmerica ? (online?.modelYear ?? offline?.modelYear) : (offline?.modelYear ?? online?.modelYear);
+}

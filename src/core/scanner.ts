@@ -84,7 +84,7 @@ export async function scanVehicle(
       await elm.target(cand.txId, cand.rxId);
       const { ident, refused } = await readIdentification(elm);
       if (Object.keys(ident).length > 0 || refused > 0) {
-        ecus.push({ name: ident.systemName ? `${cand.name} · ${ident.systemName}` : cand.name, ...cand, ident, refused });
+        ecus.push({ ...cand, name: ident.systemName ? `${cand.name} · ${ident.systemName}` : cand.name, ident, refused });
       }
     } catch (e) {
       if (e instanceof AdapterError && e.code === "bus_error") warnings.push(`${cand.txId}: ошибка шины`);

@@ -85,3 +85,13 @@ describe("live data and DTC", () => {
     expect((await readPid(elm, 0x05)).value).toBe(55);
   });
 });
+
+import { resolveModelYear, decodeVinOffline as dv } from "../src/core/vin";
+describe("model year resolution", () => {
+  it("prefers offline year for non-NA VIN and NHTSA for NA", () => {
+    const eu = dv("WVWZZZ1KZBW123456");
+    expect(resolveModelYear(eu, { modelYear: 1981 })).toBe(2011);
+    const na = dv("1HGCM82633A004352");
+    expect(resolveModelYear(na, { modelYear: 2003 })).toBe(2003);
+  });
+});

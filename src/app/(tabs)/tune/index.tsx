@@ -1,10 +1,10 @@
 import { useRouter } from "expo-router";
 import { View } from "react-native";
-import { LEGAL_NOTICE, identifyFamily, matchCatalog } from "../../core/catalog";
-import { useSession } from "../../session";
-import { useStore } from "../../storage/store";
-import { formatKzt, vehicleTitle } from "../../storage/model";
-import { Badge, Body, Button, Card, Empty, H2, Muted, Screen } from "../../ui/kit";
+import { LEGAL_NOTICE, identifyFamily, matchCatalog } from "../../../core/catalog";
+import { useSession } from "../../../session";
+import { useStore } from "../../../storage/store";
+import { formatKzt, vehicleTitle } from "../../../storage/model";
+import { Badge, Body, Button, Card, Empty, H2, Muted, Screen } from "../../../ui/kit";
 
 const CATEGORY: Record<string, string> = {
   performance: "Мощность",
@@ -39,7 +39,7 @@ export default function TuneScreen() {
       customerId: vehicle?.customerId ?? null,
       status: "awaiting_file",
     });
-    router.push({ pathname: "/job/[id]", params: { id: job.id } });
+    router.push({ pathname: "/clients/job/[id]", params: { id: job.id } });
   }
 
   return (
@@ -83,7 +83,7 @@ export default function TuneScreen() {
                     <Muted key={r}>⚠︎ {r}</Muted>
                   ))}
                   {m.item.priceKzt ? <Body>{formatKzt(m.item.priceKzt)}</Body> : null}
-                  <Button title="Подготовить прошивку" onPress={() => router.push({ pathname: "/flash", params: { itemId: m.item.id, ecu: ecu.txId } })} />
+                  <Button title="Подготовить прошивку" onPress={() => router.push({ pathname: "/tune/flash", params: { itemId: m.item.id, ecu: ecu.txId } })} />
                 </Card>
               ))
             )}

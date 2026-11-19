@@ -19,10 +19,6 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="live" options={{ title: "Данные в реальном времени" }} />
-          <Stack.Screen name="flash" options={{ title: "Прошивка блока" }} />
-          <Stack.Screen name="job/[id]" options={{ title: "Заказ" }} />
-          <Stack.Screen name="customer/[id]" options={{ title: "Клиент" }} />
         </Stack>
       </SessionProvider>
     </StoreProvider>

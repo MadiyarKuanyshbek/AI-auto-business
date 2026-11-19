@@ -1,8 +1,8 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Pressable, Text, View } from "react-native";
-import { useStore } from "../../storage/store";
-import { JOB_STATUSES, JOB_STATUS_LABEL, formatKzt } from "../../storage/model";
-import { Body, Button, Card, Empty, Field, H2, Muted, Row, Screen, colors } from "../../ui/kit";
+import { useStore } from "../../../../storage/store";
+import { JOB_STATUSES, JOB_STATUS_LABEL, formatKzt } from "../../../../storage/model";
+import { Body, Button, Card, Empty, Field, H2, Muted, Row, Screen, colors } from "../../../../ui/kit";
 
 export default function JobScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();

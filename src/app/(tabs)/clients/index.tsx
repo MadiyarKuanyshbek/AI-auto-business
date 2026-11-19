@@ -1,9 +1,9 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { useStore } from "../../storage/store";
-import { JOB_STATUS_LABEL, formatKzt } from "../../storage/model";
-import { Badge, Body, Button, Card, Empty, Field, Muted, Screen, colors } from "../../ui/kit";
+import { useStore } from "../../../storage/store";
+import { JOB_STATUS_LABEL, formatKzt } from "../../../storage/model";
+import { Badge, Body, Button, Card, Empty, Field, Muted, Screen, colors } from "../../../ui/kit";
 
 export default function ClientsScreen() {
   const router = useRouter();
@@ -23,7 +23,7 @@ export default function ClientsScreen() {
     setName("");
     setPhone("");
     setAdding(false);
-    router.push({ pathname: "/customer/[id]", params: { id: c.id } });
+    router.push({ pathname: "/clients/customer/[id]", params: { id: c.id } });
   }
 
   return (
@@ -43,13 +43,13 @@ export default function ClientsScreen() {
 
       {tab === "jobs" ? (
         <>
-          <Button title="Новый заказ" onPress={() => router.push({ pathname: "/job/[id]", params: { id: store.addJob({ title: "Новый заказ" }).id } })} />
+          <Button title="Новый заказ" onPress={() => router.push({ pathname: "/clients/job/[id]", params: { id: store.addJob({ title: "Новый заказ" }).id } })} />
           {jobs.length === 0 ? <Empty title="Заказов пока нет" hint="Заказ создаётся из карточки авто после диагностики или вручную." /> : null}
           {jobs.map((j) => {
             const customer = customers.find((c) => c.id === j.customerId);
             const vehicle = vehicles.find((v) => v.id === j.vehicleId);
             return (
-              <Pressable key={j.id} onPress={() => router.push({ pathname: "/job/[id]", params: { id: j.id } })}>
+              <Pressable key={j.id} onPress={() => router.push({ pathname: "/clients/job/[id]", params: { id: j.id } })}>
                 <Card>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
                     <Body style={{ fontWeight: "700", flex: 1 }}>{j.title}</Body>
@@ -76,7 +76,7 @@ export default function ClientsScreen() {
           )}
           {customers.length === 0 ? <Empty title="Клиентов пока нет" /> : null}
           {customers.map((c) => (
-            <Pressable key={c.id} onPress={() => router.push({ pathname: "/customer/[id]", params: { id: c.id } })}>
+            <Pressable key={c.id} onPress={() => router.push({ pathname: "/clients/customer/[id]", params: { id: c.id } })}>
               <Card>
                 <Body style={{ fontWeight: "700" }}>{c.name}</Body>
                 <Muted>{c.phone || "телефон не указан"} · авто: {vehicles.filter((v) => v.customerId === c.id).length} · заказов: {jobs.filter((j) => j.customerId === c.id).length}</Muted>

@@ -3,7 +3,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import { useMemo, useState } from "react";
 import { Switch, View } from "react-native";
-import { LEGAL_NOTICE } from "../core/catalog";
+import { LEGAL_NOTICE } from "../../../core/catalog";
 import {
   ElmReadOnlyProvider,
   SimulatedFlashProvider,
@@ -14,10 +14,10 @@ import {
   type FlashOutcome,
   type FlashProvider,
   type FlashRequest,
-} from "../core/flash";
-import { sha256Hex } from "../core/sha256";
-import { useSession } from "../session";
-import { Badge, Body, Button, Card, Empty, H2, Muted, Progress, Row, Screen, colors } from "../ui/kit";
+} from "../../../core/flash";
+import { sha256Hex } from "../../../core/sha256";
+import { useSession } from "../../../session";
+import { Badge, Body, Button, Card, Empty, H2, Muted, Progress, Row, Screen, colors } from "../../../ui/kit";
 
 export default function FlashScreen() {
   const { itemId, ecu: ecuId } = useLocalSearchParams<{ itemId: string; ecu: string }>();

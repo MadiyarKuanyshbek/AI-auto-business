@@ -14,6 +14,9 @@ protocol.registerSchemesAsPrivileged([
   { scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
 ]);
 
+// При самопроверке данные приложения лежат в отдельной папке — чистое состояние на каждый прогон.
+if (SELFTEST) app.setPath("userData", path.join(SELFTEST, "userdata"));
+
 let win = null;
 
 // ───────────── Раздача интерфейса по app://autoflash/ (стабильное «происхождение» для localStorage) ─────────────

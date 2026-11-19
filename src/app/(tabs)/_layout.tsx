@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { Text } from "react-native";
+import { Text, useWindowDimensions } from "react-native";
 import { colors } from "../../ui/kit";
 
 const icon = (glyph: string) =>
@@ -7,7 +7,22 @@ const icon = (glyph: string) =>
     return <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.55 }}>{glyph}</Text>;
   };
 
+/** Пункты меню по порядку рабочего процесса мастера: подключился → увидел авто → данные → доработки → заказы. */
+/** hasStack — у раздела свой вложенный стек (детали с кнопкой «Назад»), заголовок рисует он сам. */
+const SCREENS = [
+  { name: "index", title: "Подключение", step: 1, glyph: "🔌" },
+  { name: "vehicle", title: "Авто", step: 2, glyph: "🚗" },
+  { name: "live", title: "Живые данные", step: 3, glyph: "📈" },
+  { name: "tune", title: "Прошивки", step: 4, glyph: "⚙️", hasStack: true },
+  { name: "clients", title: "Клиенты и заказы", step: 5, glyph: "👥", hasStack: true },
+  { name: "settings", title: "Настройки", step: 6, glyph: "☰" },
+] as const;
+
 export default function TabsLayout() {
+  const { width } = useWindowDimensions();
+  // На компьютере и планшете меню слева вертикально; на телефоне — снизу.
+  const wide = width >= 820;
+
   return (
     <Tabs
       screenOptions={{
@@ -15,16 +30,31 @@ export default function TabsLayout() {
         headerTintColor: colors.text,
         sceneStyle: { backgroundColor: colors.bg },
         animation: "none",
-        tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border },
+        tabBarPosition: wide ? "left" : "bottom",
+        tabBarVariant: wide ? "material" : undefined,
+        tabBarLabelPosition: wide ? "beside-icon" : undefined,
+        tabBarStyle: wide
+          ? { backgroundColor: colors.card, borderRightColor: colors.border, borderRightWidth: 1, width: 285, minWidth: 285, maxWidth: 285 }
+          : { backgroundColor: colors.card, borderTopColor: colors.border },
+        tabBarItemStyle: wide ? { justifyContent: "flex-start", paddingHorizontal: 12, height: 46 } : undefined,
+        tabBarLabelStyle: wide ? { fontSize: 15, fontWeight: "600", marginLeft: 6 } : undefined,
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.muted,
+        tabBarActiveBackgroundColor: wide ? colors.cardAlt : undefined,
       }}
     >
-      <Tabs.Screen name="index" options={{ title: "Подключение", tabBarIcon: icon("🔌") }} />
-      <Tabs.Screen name="vehicle" options={{ title: "Авто", tabBarIcon: icon("🚗") }} />
-      <Tabs.Screen name="tune" options={{ title: "Прошивки", tabBarIcon: icon("⚙️") }} />
-      <Tabs.Screen name="clients" options={{ title: "Клиенты", tabBarIcon: icon("👥") }} />
-      <Tabs.Screen name="settings" options={{ title: "Ещё", tabBarIcon: icon("☰") }} />
+      {SCREENS.map((s) => (
+        <Tabs.Screen
+          key={s.name}
+          name={s.name}
+          options={{
+            title: s.title,
+            headerShown: !("hasStack" in s),
+            tabBarLabel: wide ? `${s.step}. ${s.title}` : s.title,
+            tabBarIcon: icon(s.glyph),
+          }}
+        />
+      ))}
     </Tabs>
   );
 }

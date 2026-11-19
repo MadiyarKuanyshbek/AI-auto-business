@@ -1,8 +1,8 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Linking, Pressable } from "react-native";
-import { useStore } from "../../storage/store";
-import { JOB_STATUS_LABEL, formatKzt } from "../../storage/model";
-import { Badge, Body, Button, Card, Empty, Field, H2, Muted, Screen } from "../../ui/kit";
+import { useStore } from "../../../../storage/store";
+import { JOB_STATUS_LABEL, formatKzt } from "../../../../storage/model";
+import { Badge, Body, Button, Card, Empty, Field, H2, Muted, Screen } from "../../../../ui/kit";
 
 export default function CustomerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -35,7 +35,7 @@ export default function CustomerScreen() {
 
       <H2>Заказы</H2>
       {jobs.map((j) => (
-        <Pressable key={j.id} onPress={() => router.push({ pathname: "/job/[id]", params: { id: j.id } })}>
+        <Pressable key={j.id} onPress={() => router.push({ pathname: "/clients/job/[id]", params: { id: j.id } })}>
           <Card>
             <Body style={{ fontWeight: "700" }}>{j.title}</Body>
             <Badge text={JOB_STATUS_LABEL[j.status]} tone="accent" />
@@ -43,7 +43,7 @@ export default function CustomerScreen() {
           </Card>
         </Pressable>
       ))}
-      <Button title="Новый заказ для клиента" onPress={() => router.push({ pathname: "/job/[id]", params: { id: store.addJob({ title: "Новый заказ", customerId: customer.id }).id } })} />
+      <Button title="Новый заказ для клиента" onPress={() => router.push({ pathname: "/clients/job/[id]", params: { id: store.addJob({ title: "Новый заказ", customerId: customer.id }).id } })} />
       <Button title="Удалить клиента" kind="danger" onPress={() => { store.removeCustomer(customer.id); router.back(); }} />
     </Screen>
   );

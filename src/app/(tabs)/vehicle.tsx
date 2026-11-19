@@ -45,7 +45,7 @@ export default function VehicleScreen() {
 
   function createJob() {
     const job = store.addJob({ title: `Диагностика: ${vehicleTitle(scan!)}`, vehicleId: vehicle?.id ?? null, customerId: vehicle?.customerId ?? null, status: "diagnostics" });
-    router.push({ pathname: "/job/[id]", params: { id: job.id } });
+    router.push({ pathname: "/clients/job/[id]", params: { id: job.id } });
   }
 
   return (

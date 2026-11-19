@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useRef, useState } from "react";
 import { View } from "react-native";
-import { PIDS, readPid, type LiveValue } from "../core/obd";
-import { useSession } from "../session";
-import { Body, Card, Empty, Muted, Screen, colors } from "../ui/kit";
+import { PIDS, readPid, type LiveValue } from "../../core/obd";
+import { useSession } from "../../session";
+import { Body, Card, Empty, Muted, Screen, colors } from "../../ui/kit";
 
 const SHOWN = [0x0c, 0x0d, 0x05, 0x04, 0x0b, 0x11, 0x0f, 0x42, 0x10, 0x5c, 0x2f];
 
@@ -12,31 +13,35 @@ export default function LiveScreen() {
   const [error, setError] = useState<string | null>(null);
   const alive = useRef(true);
 
-  useEffect(() => {
-    alive.current = true;
-    const supported = scan?.supportedPids.length ? new Set(scan.supportedPids) : null;
-    const pids = SHOWN.filter((p) => !supported || supported.has(p));
+  // Опрос идёт только пока вкладка открыта: вкладки остаются в памяти, и иначе адаптер
+  // продолжал бы опрашиваться в фоне и мешал бы сканированию и прошивке.
+  useFocusEffect(
+    useCallback(() => {
+      alive.current = true;
+      const supported = scan?.supportedPids.length ? new Set(scan.supportedPids) : null;
+      const pids = SHOWN.filter((p) => !supported || supported.has(p));
 
-    (async () => {
-      if (!elm) return;
-      while (alive.current) {
-        for (const pid of pids) {
-          if (!alive.current) return;
-          try {
-            const v = await readPid(elm, pid);
-            setValues((prev) => ({ ...prev, [pid]: v }));
-            setError(null);
-          } catch (e) {
-            setError(e instanceof Error ? e.message : "Ошибка чтения");
+      (async () => {
+        if (!elm) return;
+        while (alive.current) {
+          for (const pid of pids) {
+            if (!alive.current) return;
+            try {
+              const v = await readPid(elm, pid);
+              setValues((prev) => ({ ...prev, [pid]: v }));
+              setError(null);
+            } catch (e) {
+              setError(e instanceof Error ? e.message : "Ошибка чтения");
+            }
           }
+          await new Promise((r) => setTimeout(r, 150));
         }
-        await new Promise((r) => setTimeout(r, 150));
-      }
-    })();
-    return () => {
-      alive.current = false;
-    };
-  }, [elm, scan]);
+      })();
+      return () => {
+        alive.current = false;
+      };
+    }, [elm, scan]),
+  );
 
   if (!elm) return <Screen><Empty title="Нет подключения" hint="Подключитесь к адаптеру на вкладке «Подключение»." /></Screen>;
 

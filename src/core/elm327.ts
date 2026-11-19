@@ -154,6 +154,9 @@ export class Elm327 {
   private logMax = 400;
   /** Шина авто; определяется после первого успешного запроса (detectBus). */
   bus: BusKind = "can11";
+  /** Адаптер на чипе STN (OBDLink и др.) умеет отправлять многокадровые запросы (STPX) — нужно для прошивки. */
+  isStn = false;
+  chip = "ELM327";
 
   constructor(readonly transport: Transport) {}
 
@@ -245,6 +248,41 @@ export class Elm327 {
   async protocol(): Promise<string> {
     const lines = await this.at("ATDP");
     return lines.join(" ").replace(/^AUTO,\s*/i, "");
+  }
+
+  /** Определяет чип адаптера: STN-адаптеры отвечают на STI, настоящие и поддельные ELM327 — нет. */
+  async detectChip(): Promise<{ chip: string; isStn: boolean }> {
+    try {
+      const lines = await this.raw("STI", 2000);
+      const text = lines.join(" ").trim();
+      if (/STN|STM|ST\d/i.test(text) && !/^\?$/.test(text)) {
+        this.isStn = true;
+        this.chip = text;
+        return { chip: text, isStn: true };
+      }
+    } catch {
+      /* нет ответа — обычный ELM327 */
+    }
+    this.isStn = false;
+    this.chip = "ELM327 или совместимый";
+    return { chip: this.chip, isStn: false };
+  }
+
+  /**
+   * Запрос длиннее одного CAN-кадра (до 4095 байт) — только на STN-адаптерах (команда STPX).
+   * Обычные ELM327 не умеют отправлять многокадровые запросы, поэтому для них метод отказывает.
+   */
+  async requestLong(payloadHex: string, timeoutMs = 15000): Promise<EcuMessage[]> {
+    const clean = payloadHex.replace(/\s/g, "");
+    if (clean.length / 2 <= 7) return this.request(clean, timeoutMs);
+    if (!this.isStn) {
+      throw new AdapterError("Этот адаптер не умеет отправлять длинные сообщения (нужен адаптер на чипе STN, например OBDLink)", "unsupported");
+    }
+    const lines = await this.raw(`STPX T:${timeoutMs}, D:${clean}`, timeoutMs + 3000);
+    this.throwIfError(lines);
+    const messages = parseResponseLines(lines.filter((l) => !NOISE.some((n) => n.test(l.toUpperCase()))));
+    if (messages.length === 0) throw new AdapterError("Нет ответа от блока", "no_data");
+    return messages;
   }
 
   /** Номер протокола, найденный адаптером (ATDPN), и тип шины. Вызывать после первого запроса к авто. */

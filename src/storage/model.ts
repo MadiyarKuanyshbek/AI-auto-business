@@ -59,8 +59,14 @@ export const DEFAULT_SETTINGS: Settings = {
   lastBackupDay: "",
 };
 
+/** Что и когда установлено в блок автомобиля (по VIN) — по этому находим доступные обновления. */
+export type InstallRecord = { vin: string; ecuTxId: string; packageId: string; version: string; at: number; softwareAfter?: string };
+
 export type AppData = {
   settings: Settings;
+  /** Загруженные пакеты прошивки (сырой JSON; проверяются при чтении). */
+  packages: unknown[];
+  installs: InstallRecord[];
   customers: Customer[];
   vehicles: VehicleRec[];
   jobs: Job[];
@@ -68,7 +74,7 @@ export type AppData = {
   catalogJson: unknown;
 };
 
-export const EMPTY_DATA: AppData = { settings: DEFAULT_SETTINGS, customers: [], vehicles: [], jobs: [], catalogJson: [] };
+export const EMPTY_DATA: AppData = { settings: DEFAULT_SETTINGS, packages: [], installs: [], customers: [], vehicles: [], jobs: [], catalogJson: [] };
 
 export const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
@@ -85,6 +91,8 @@ export function sanitizeData(raw: unknown): AppData {
       hadRealScan: st.hadRealScan === true,
       lastBackupDay: typeof st.lastBackupDay === "string" ? st.lastBackupDay : "",
     },
+    packages: Array.isArray(r.packages) ? r.packages.filter((x) => x && typeof x === "object") : [],
+    installs: arr<InstallRecord>(r.installs),
     customers: arr<Customer>(r.customers),
     vehicles: arr<VehicleRec>(r.vehicles).map((v) => ({ ...v, scans: Array.isArray(v.scans) ? v.scans : [] })),
     jobs: arr<Job>(r.jobs).map((j) => ({ ...j, log: Array.isArray(j.log) ? j.log : [] })),

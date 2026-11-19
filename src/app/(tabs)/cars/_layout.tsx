@@ -1,7 +1,7 @@
 import { Stack } from "expo-router";
 import { colors } from "../../../ui/kit";
 
-export default function TuneLayout() {
+export default function CarsLayout() {
   return (
     <Stack
       screenOptions={{
@@ -11,8 +11,8 @@ export default function TuneLayout() {
         headerBackTitle: "Назад",
       }}
     >
-      <Stack.Screen name="index" options={{ title: "Прошивки" }} />
-      <Stack.Screen name="flash" options={{ title: "Прошивка блока" }} />
+      <Stack.Screen name="index" options={{ title: "Авто и прошивки" }} />
+      <Stack.Screen name="install" options={{ title: "Установка прошивки" }} />
     </Stack>
   );
 }

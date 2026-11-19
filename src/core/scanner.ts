@@ -16,7 +16,7 @@ export type ScannedEcu = {
 
 export type VehicleScan = {
   scannedAt: number;
-  adapter: { version: string; voltage: number | null; protocol: string; bus: BusKind };
+  adapter: { version: string; voltage: number | null; protocol: string; bus: BusKind; chip: string; isStn: boolean };
   vin?: string;
   vinInfo?: VinInfo;
   vinOnline?: VinOnline | null;
@@ -72,7 +72,8 @@ export async function scanVehicle(
 
   progress("Подключение к адаптеру", 0.02);
   const init = await elm.init();
-  const adapter: VehicleScan["adapter"] = { version: init.version, voltage: init.voltage, protocol: "—", bus: "unknown" };
+  const chip = await elm.detectChip();
+  const adapter: VehicleScan["adapter"] = { version: init.version, voltage: init.voltage, protocol: "—", bus: "unknown", chip: chip.chip, isStn: chip.isStn };
   if (init.voltage !== null && init.voltage < 11.8) {
     warnings.push(`Низкое напряжение бортсети (${init.voltage.toFixed(1)} В): запустите двигатель или подключите зарядное устройство.`);
   }

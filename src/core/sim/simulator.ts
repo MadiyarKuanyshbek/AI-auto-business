@@ -1,5 +1,6 @@
 import type { Transport } from "../transport";
 import { asciiToBytes, bytesToHex } from "../hex";
+import { sha256Hex } from "../sha256";
 
 /** Виртуальный блок управления внутри симулятора. */
 export type SimEcu = {
@@ -15,10 +16,22 @@ export type SimEcu = {
   dtcs?: string[]; // "P0171"
   /** Задержка ответа в мс (для проверки таймаутов). */
   delayMs?: number;
+  /** Виртуальный загрузчик блока: позволяет проверять установку прошивки (UDS 0x10/0x27/0x31/0x34/0x36/0x37/0x11/0x23). */
+  flash?: {
+    base: number;
+    memory: Uint8Array;
+    seedHex: string;
+    maskHex: string;
+    maxBlock: number;
+    /** Основа номера ПО: после успешной прошивки блок показывает основа + "-" + первые 4 символа SHA-256 записанной области. */
+    softwareBase?: string;
+  };
 };
 
 export type SimVehicle = {
   label: string;
+  /** Адаптер на чипе STN (умеет длинные сообщения STPX). */
+  stn?: boolean;
   /** Шина: CAN 11 бит (по умолчанию), CAN 29 бит или K-Line (ISO 9141-2 / KWP2000). */
   bus?: "can11" | "can29" | "kline";
   /** Для K-Line: "iso9141" (кадры 48 6B, VIN в 4-байтовых кадрах) или "kwp" (кадры 8N F1). */
@@ -64,6 +77,12 @@ function isoTpLines(rxId: string, payload: number[]): string[] {
     seq++;
   }
   return lines;
+}
+
+function hexToBytesLocal(hex: string): number[] {
+  const out: number[] = [];
+  for (let i = 0; i + 1 < hex.length; i += 2) out.push(parseInt(hex.slice(i, i + 2), 16));
+  return out;
 }
 
 function checksum(bytes: number[]): number {
@@ -113,6 +132,7 @@ export class SimulatedAdapter implements Transport {
   private connected = false;
   private header = "7DF";
   private priority = "18";
+  private boot = new Map<SimEcu, { session: number; unlocked: boolean; seedOut: boolean; dl: { addr: number; len: number; seq: number; data: number[] } | null; written: boolean }>();
   private rxFilter: string | null = null;
   private echo = true;
   /** Команды, по которым симулятор "не отвечает" — для тестов таймаутов. */
@@ -161,10 +181,19 @@ export class SimulatedAdapter implements Transport {
     const upper = cmd.toUpperCase().replace(/\s+/g, "");
 
     if (upper.startsWith("AT")) return this.handleAt(cmd, upper);
-    if (!/^[0-9A-F]+$/.test(upper) || upper.length % 2) return this.out(cmd, ["?"]);
+    if (upper === "STI") return this.out(cmd, this.vehicle.stn ? ["STN2120 v5.10.3 (simulated)"] : ["?"]);
+    let hexPayload = upper;
+    const stpx = upper.match(/^STPX(?:T:\d+,)?(?:H:[0-9A-F]+,)?D:([0-9A-F]+)$/);
+    if (stpx) {
+      if (!this.vehicle.stn) return this.out(cmd, ["?"]);
+      hexPayload = stpx[1];
+    }
+    if (!/^[0-9A-F]+$/.test(hexPayload) || hexPayload.length % 2) return this.out(cmd, ["?"]);
+    // Настоящий ELM327 не отправляет многокадровые запросы: только STPX на STN-адаптере.
+    if (!stpx && hexPayload.length / 2 > 7) return this.out(cmd, ["?"]);
 
     const request = [] as number[];
-    for (let i = 0; i < upper.length; i += 2) request.push(parseInt(upper.slice(i, i + 2), 16));
+    for (let i = 0; i < hexPayload.length; i += 2) request.push(parseInt(hexPayload.slice(i, i + 2), 16));
 
     const functional = this.header === "7DF" || this.header === "FUNC";
     const targets = this.vehicle.ecus.filter((e) => (functional ? e.obd : e.txId === this.header));
@@ -233,6 +262,94 @@ export class SimulatedAdapter implements Transport {
     return ok; // L0, S1, H1, CAF1, ST xx, SP0 …
   }
 
+  /** Виртуальный загрузчик блока: те же проверки порядка, что делает настоящий (сессия → доступ → стирание → загрузка). */
+  private bootloader(ecu: SimEcu, req: number[]): number[] | null {
+    const f = ecu.flash!;
+    let st = this.boot.get(ecu);
+    if (!st) {
+      st = { session: 1, unlocked: false, seedOut: false, dl: null, written: false };
+      this.boot.set(ecu, st);
+    }
+    const nrc = (svc: number, code: number) => [0x7f, svc, code];
+    const [service, a, b, c] = req;
+
+    if (service === 0x10) {
+      st.session = a;
+      if (a === 0x01) st.unlocked = false;
+      return [0x50, a, 0x00, 0x32, 0x01, 0xf4];
+    }
+    if (service === 0x85) return [0xc5, a];
+    if (service === 0x27) {
+      if (a % 2 === 1) {
+        if (st.session === 1) return nrc(0x27, 0x7e);
+        st.seedOut = true;
+        return [0x67, a, ...hexToBytesLocal(f.seedHex)];
+      }
+      if (!st.seedOut) return nrc(0x27, 0x24);
+      const seed = hexToBytesLocal(f.seedHex);
+      const mask = hexToBytesLocal(f.maskHex);
+      const expected = seed.map((x, i) => ((x ^ mask[i % mask.length]) + 1) & 0xff);
+      const key = req.slice(2);
+      if (key.length !== expected.length || key.some((x, i) => x !== expected[i])) return nrc(0x27, 0x35);
+      st.unlocked = true;
+      return [0x67, a];
+    }
+    if (service === 0x23) {
+      if (!st.unlocked) return nrc(0x23, 0x33);
+      const lenBytes = a >> 4;
+      const addrBytes = a & 0x0f;
+      const addr = req.slice(2, 2 + addrBytes).reduce((x, y) => x * 256 + y, 0);
+      const len = req.slice(2 + addrBytes, 2 + addrBytes + lenBytes).reduce((x, y) => x * 256 + y, 0);
+      if (addr < f.base || addr + len > f.base + f.memory.length) return nrc(0x23, 0x31);
+      return [0x63, ...f.memory.slice(addr - f.base, addr - f.base + len)];
+    }
+    if (service === 0x31 && a === 0x01) {
+      const id = (b << 8) | c;
+      if (id === 0xff00) {
+        if (st.session !== 0x02 || !st.unlocked) return nrc(0x31, 0x33);
+        f.memory.fill(0xff);
+        return [0x71, 0x01, b, c, 0x00];
+      }
+      if (id === 0x0202) return [0x71, 0x01, b, c, 0x00];
+      return nrc(0x31, 0x31);
+    }
+    if (service === 0x34) {
+      if (st.session !== 0x02) return nrc(0x34, 0x7e);
+      if (!st.unlocked) return nrc(0x34, 0x33);
+      const fmt = req[2];
+      const addrBytes = fmt & 0x0f;
+      const lenBytes = fmt >> 4;
+      const addr = req.slice(3, 3 + addrBytes).reduce((x, y) => x * 256 + y, 0);
+      const len = req.slice(3 + addrBytes, 3 + addrBytes + lenBytes).reduce((x, y) => x * 256 + y, 0);
+      if (addr < f.base || addr + len > f.base + f.memory.length) return nrc(0x34, 0x31);
+      st.dl = { addr, len, seq: 1, data: [] };
+      return [0x74, 0x20, (f.maxBlock >> 8) & 0xff, f.maxBlock & 0xff];
+    }
+    if (service === 0x36) {
+      if (!st.dl) return nrc(0x36, 0x24);
+      if (a !== st.dl.seq) return nrc(0x36, 0x73);
+      st.dl.data.push(...req.slice(2));
+      st.dl.seq = (st.dl.seq + 1) & 0xff;
+      return [0x76, a];
+    }
+    if (service === 0x37) {
+      if (!st.dl || st.dl.data.length !== st.dl.len) return nrc(0x37, 0x24);
+      f.memory.set(st.dl.data, st.dl.addr - f.base);
+      st.dl = null;
+      st.written = true;
+      return [0x77];
+    }
+    if (service === 0x11) {
+      if (st.written && f.softwareBase) {
+        const sw = `${f.softwareBase}-${sha256Hex(f.memory).slice(0, 4).toUpperCase()}`;
+        ecu.dids = { ...(ecu.dids ?? {}), 0xf194: sw, 0xf195: sw };
+      }
+      this.boot.set(ecu, { session: 1, unlocked: false, seedOut: false, dl: null, written: false });
+      return [0x51, a];
+    }
+    return null;
+  }
+
   /** Ответ блока на запрос (без CAN-обвязки). null — блок промолчал. */
   private respond(ecu: SimEcu, req: number[]): number[] | null {
     const v = this.vehicle;
@@ -280,6 +397,11 @@ export class SimulatedAdapter implements Transport {
       if (value === undefined) return [0x7f, 0x22, 0x31];
       const bytes = typeof value === "string" ? asciiToBytes(value) : value;
       return [0x62, req[1], req[2], ...bytes];
+    }
+
+    if (ecu.flash) {
+      const r = this.bootloader(ecu, req);
+      if (r) return r;
     }
 
     if (service === 0x1a) {

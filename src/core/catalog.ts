@@ -58,6 +58,8 @@ export type CatalogItem = {
     softwarePrefixes?: string[];
     familyIds?: string[];
     makes?: string[];
+    /** Подстроки названий моделей (например "Golf", "Camry"). Пусто — подходит любая модель марки. */
+    models?: string[];
   };
   /** Идентификатор файла у партнёра/в хранилище. Без него позиция — только описание, прошить нельзя. */
   fileRef?: string;
@@ -169,6 +171,7 @@ export function parseCatalog(json: unknown): CatalogItem[] {
         softwarePrefixes: strs(compat.softwarePrefixes),
         familyIds: strs(compat.familyIds),
         makes: strs(compat.makes),
+        models: strs(compat.models),
       },
       fileRef: str(r.fileRef) || undefined,
       fileSha256: str(r.fileSha256) || undefined,

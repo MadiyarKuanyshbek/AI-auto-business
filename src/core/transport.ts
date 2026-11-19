@@ -4,7 +4,7 @@
  * и в тестах — через программный симулятор автомобиля.
  */
 export interface Transport {
-  readonly kind: "ble" | "wifi" | "webbluetooth" | "demo";
+  readonly kind: "ble" | "wifi" | "webbluetooth" | "serial" | "demo";
   readonly label: string;
   connect(): Promise<void>;
   disconnect(): Promise<void>;

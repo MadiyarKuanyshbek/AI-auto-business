@@ -11,10 +11,7 @@ const icon = (glyph: string) =>
 /** hasStack — у раздела свой вложенный стек (детали с кнопкой «Назад»), заголовок рисует он сам. */
 const SCREENS = [
   { name: "index", title: "Подключение", step: 1, glyph: "🔌" },
-  { name: "vehicle", title: "Авто", step: 2, glyph: "🚗" },
-  { name: "tune", title: "Прошивки", step: 3, glyph: "⚙️", hasStack: true },
-  { name: "clients", title: "Клиенты и заказы", step: 4, glyph: "👥", hasStack: true },
-  { name: "settings", title: "Настройки", step: 5, glyph: "☰" },
+  { name: "cars", title: "Авто и прошивки", step: 2, glyph: "🚗", hasStack: true },
 ] as const;
 
 export default function TabsLayout() {

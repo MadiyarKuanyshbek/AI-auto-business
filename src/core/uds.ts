@@ -28,7 +28,7 @@ export type UdsResult =
 /** Отправка UDS-запроса одному блоку и разбор положительного/отрицательного ответа. */
 export async function udsRequest(elm: Elm327, request: number[], timeoutMs = 5000): Promise<UdsResult> {
   const hex = request.map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
-  const messages = await elm.request(hex, timeoutMs);
+  const messages = request.length > 7 ? await elm.requestLong(hex, timeoutMs) : await elm.request(hex, timeoutMs);
   const service = request[0];
 
   // Сначала положительный ответ, потом отказ; "ответ ожидается" (NRC 0x78) пропускаем.

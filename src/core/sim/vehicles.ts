@@ -17,6 +17,7 @@ const COMMON_PIDS = {
 export const DEMO_VEHICLES: SimVehicle[] = [
   {
     label: "Volkswagen Golf 6 2.0 TDI (демо)",
+    stn: true,
     vin: "WVWZZZ1KZBW123456",
     voltage: 12.7,
     pids: { ...COMMON_PIDS, 0x04: [0x3a], 0x10: [0x04, 0xd2] },
@@ -40,6 +41,15 @@ export const DEMO_VEHICLES: SimVehicle[] = [
           0xf194: "1037525811",
           0xf195: "1037525811AA",
           0xf197: "EDC17 CP20",
+        },
+        // Виртуальный загрузчик для проверки установки пакета прошивки (8 КБ «памяти» блока).
+        flash: {
+          base: 0x80000,
+          memory: Uint8Array.from({ length: 8192 }, (_, i) => (i * 13 + 5) & 0xff),
+          seedHex: "A1B2C3D4",
+          maskHex: "5A",
+          maxBlock: 0x402,
+          softwareBase: "1037525811",
         },
       },
       {

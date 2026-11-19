@@ -2,7 +2,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { VehicleScan } from "../core/scanner";
 import { desktopBridge } from "../transport/desktop";
-import { EMPTY_DATA, newId, sanitizeData, vehicleTitle, type AppData, type Customer, type Job, type Settings, type VehicleRec } from "./model";
+import { parsePackage } from "../core/package";
+import { EMPTY_DATA, newId, sanitizeData, vehicleTitle, type AppData, type Customer, type InstallRecord, type Job, type Settings, type VehicleRec } from "./model";
 
 const KEY = "autoflash.v1";
 const MAX_SCANS_PER_VEHICLE = 5;
@@ -22,6 +23,10 @@ type Store = {
   removeJob(id: string): void;
   setCatalogJson(json: unknown): void;
   updateSettings(patch: Partial<Settings>): void;
+  /** Добавляет пакет прошивки в библиотеку после проверки формата и контрольных сумм. */
+  addPackage(json: unknown): { ok: true; title: string } | { ok: false; error: string };
+  removePackage(id: string, version: string): void;
+  addInstall(rec: InstallRecord): void;
   /** Полная копия данных в виде JSON-текста (для резервной копии и переноса на другой компьютер). */
   exportJson(): string;
   /** Заменяет все данные содержимым копии. Возвращает false, если это не копия AutoFlash. */
@@ -136,6 +141,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       setCatalogJson(json) {
         mutate((d) => ({ ...d, catalogJson: json }));
+      },
+      addPackage(json) {
+        const parsed = parsePackage(json);
+        if (!parsed.ok) return { ok: false, error: parsed.error };
+        const { id, version } = parsed.pkg;
+        const rest = dataRef.current.packages.filter((p) => {
+          const q = p as { id?: string; version?: string };
+          return !(q.id === id && q.version === version);
+        });
+        const next = { ...dataRef.current, packages: [...rest, json] };
+        dataRef.current = next;
+        setData(next);
+        return { ok: true, title: `${parsed.pkg.title} v${version}` };
+      },
+      removePackage(id, version) {
+        mutate((d) => ({ ...d, packages: d.packages.filter((p) => { const q = p as { id?: string; version?: string }; return !(q.id === id && q.version === version); }) }));
+      },
+      addInstall(rec) {
+        mutate((d) => ({ ...d, installs: [...d.installs, rec] }));
       },
       updateSettings(patch) {
         mutate((d) => ({ ...d, settings: { ...d.settings, ...patch } }));

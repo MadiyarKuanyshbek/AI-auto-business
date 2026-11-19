@@ -88,7 +88,7 @@ function serialTransport(port: SerialPortLike): Transport {
   }
 
   return {
-    kind: "webbluetooth", // тип для интерфейса не важен; подпись берётся из label
+    kind: "serial",
     label: "COM-порт (USB / Bluetooth)",
     async connect() {
       for (const baud of BAUD_RATES) {

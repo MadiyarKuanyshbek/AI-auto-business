@@ -1,7 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Elm327 } from "./core/elm327";
 import { DEMO_CATALOG, parseCatalog, type CatalogItem } from "./core/catalog";
+import { parsePackage, type FirmwarePackage } from "./core/package";
 import { scanVehicle, type VehicleScan } from "./core/scanner";
+import { DEMO_PACKAGES } from "./core/sim/demoPackage";
 import { SimulatedAdapter } from "./core/sim/simulator";
 import { DEMO_VEHICLES } from "./core/sim/vehicles";
 import type { Transport } from "./core/transport";
@@ -13,19 +15,26 @@ export type ConnectionState =
   | { status: "ready"; label: string; kind: Transport["kind"] }
   | { status: "error"; message: string };
 
+export type LoadedPackage = { pkg: FirmwarePackage; segments: { address: number; data: Uint8Array }[] };
+
 type Session = {
   connection: ConnectionState;
   elm: Elm327 | null;
+  /** Сканирование, которое показываем в приложении: текущее или последнее сохранённое. */
   scan: VehicleScan | null;
+  /** Сканирование текущего подключения (пусто, пока не подключены или идёт определение). */
+  liveScan: VehicleScan | null;
   scanning: boolean;
   progress: { step: string; fraction: number } | null;
   scanError: string | null;
   catalog: CatalogItem[];
+  /** Пакеты прошивки из библиотеки (загруженные + демо, если включены). */
+  packages: LoadedPackage[];
   connect(transport: Transport): Promise<boolean>;
   connectDemo(index: number): Promise<boolean>;
   disconnect(): Promise<void>;
   runScan(): Promise<VehicleScan | null>;
-  /** Журнал обмена с адаптером для экрана «Журнал». */
+  /** Журнал обмена с адаптером. */
   exchangeLog(): Elm327["log"];
 };
 
@@ -35,11 +44,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const store = useStore();
   const [connection, setConnection] = useState<ConnectionState>({ status: "idle" });
   const [scan, setScan] = useState<VehicleScan | null>(null);
+  const [liveScan, setLiveScan] = useState<VehicleScan | null>(null);
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState<Session["progress"]>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const elmRef = useRef<Elm327 | null>(null);
   const kindRef = useRef<Transport["kind"] | null>(null);
+  const runScanRef = useRef<() => Promise<VehicleScan | null>>(async () => null);
   const [elmState, setElmState] = useState<Elm327 | null>(null);
 
   // После перезапуска показываем последнее сохранённое сканирование (без подключения к авто).
@@ -54,10 +65,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [showDemo, store.data.catalogJson],
   );
 
+  const packages = useMemo<LoadedPackage[]>(() => {
+    const raw: unknown[] = [...(showDemo ? DEMO_PACKAGES : []), ...store.data.packages];
+    const out: LoadedPackage[] = [];
+    for (const item of raw) {
+      const parsed = parsePackage(item);
+      if (parsed.ok) out.push({ pkg: parsed.pkg, segments: parsed.segments });
+    }
+    return out;
+  }, [showDemo, store.data.packages]);
+
   const disconnect = useCallback(async () => {
     const elm = elmRef.current;
     elmRef.current = null;
     setElmState(null);
+    setLiveScan(null);
     setConnection({ status: "idle" });
     await elm?.close().catch(() => undefined);
   }, []);
@@ -74,6 +96,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           if (elmRef.current === elm) {
             elmRef.current = null;
             setElmState(null);
+            setLiveScan(null);
             setConnection({ status: "error", message: "Соединение с адаптером оборвалось" });
           }
         });
@@ -81,6 +104,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         kindRef.current = transport.kind;
         setElmState(elm);
         setConnection({ status: "ready", label: transport.label, kind: transport.kind });
+        // Сразу определяем автомобиль: пользователю не нужно ничего нажимать.
+        void runScanRef.current();
         return true;
       } catch (e) {
         await elm.close().catch(() => undefined);
@@ -105,8 +130,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       const result = await scanVehicle(elm, { onProgress: (step, fraction) => setProgress({ step, fraction }) });
       setScan(result);
+      setLiveScan(result);
       store.saveScan(result);
-      // Первый скан настоящего авто: демо-режим и демо-позиции больше не нужны клиенту — прячем.
+      // Первый скан настоящего авто: демо-режим и демо-позиции больше не нужны — прячем.
       if (kindRef.current !== "demo" && !store.data.settings.hadRealScan) {
         store.updateSettings({ hadRealScan: true, showDemo: false });
       }
@@ -119,15 +145,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setProgress(null);
     }
   }, [store]);
+  useEffect(() => {
+    runScanRef.current = runScan;
+  }, [runScan]);
 
   const value: Session = {
     connection,
     elm: elmState,
     scan: scan ?? latestStored,
+    liveScan,
     scanning,
     progress,
     scanError,
     catalog,
+    packages,
     connect,
     connectDemo,
     disconnect,

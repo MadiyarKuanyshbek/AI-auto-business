@@ -1,36 +1,24 @@
-import { useRouter } from "expo-router";
 import { useState } from "react";
-import { View } from "react-native";
-import { analyzeScan, identifyFamily } from "../../core/catalog";
-import { clearDtcs } from "../../core/obd";
-import { IDENT_DIDS } from "../../core/uds";
-import { buildComparisonHtml, buildComparisonText } from "../../core/reportExtra";
-import { resolveModelYear } from "../../core/vin";
-import { useSession } from "../../session";
-import { useStore } from "../../storage/store";
-import { vehicleTitle } from "../../storage/model";
-import { Badge, Body, Button, Card, Empty, H1, H2, Muted, Row, Screen, colors } from "../../ui/kit";
-import { LivePanel } from "../../ui/LivePanel";
-import { printHtml } from "../../ui/print";
+import { Platform, Share, View } from "react-native";
+import { analyzeScan, identifyFamily } from "../core/catalog";
+import { clearDtcs } from "../core/obd";
+import { buildReportHtml, buildReportText } from "../core/report";
+import { buildComparisonHtml, buildComparisonText } from "../core/reportExtra";
+import { IDENT_DIDS } from "../core/uds";
+import { useSession } from "../session";
+import { useStore } from "../storage/store";
+import { Badge, Body, Button, Card, H2, Muted, Row, colors } from "./kit";
+import { LivePanel } from "./LivePanel";
+import { printHtml } from "./print";
 
-export default function VehicleScreen() {
-  const router = useRouter();
+/** Подробная диагностика подключённого авто: блоки, ошибки, живые данные, отчёты. */
+export function Diagnostics() {
   const { scan, elm, runScan, scanning } = useSession();
   const store = useStore();
   const [confirmClear, setConfirmClear] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  if (!scan) return null;
 
-  if (!scan) {
-    return (
-      <Screen>
-        <Empty title="Автомобиль ещё не определён" hint="Подключитесь к адаптеру и нажмите «Сканировать автомобиль» на вкладке «Подключение»." />
-        <Button title="К подключению" onPress={() => router.push("/")} />
-      </Screen>
-    );
-  }
-
-  const info = scan.vinOnline;
-  const offline = scan.vinInfo;
   const advisories = analyzeScan(scan);
   const vehicle = store.data.vehicles.find((v) => v.vin === scan.vin);
 
@@ -46,28 +34,8 @@ export default function VehicleScreen() {
     }
   }
 
-  function createJob() {
-    const job = store.addJob({ title: `Диагностика: ${vehicleTitle(scan!)}`, vehicleId: vehicle?.id ?? null, customerId: vehicle?.customerId ?? null, status: "diagnostics" });
-    router.push({ pathname: "/clients/job/[id]", params: { id: job.id } });
-  }
-
   return (
-    <Screen>
-      <H1>{vehicleTitle(scan)}</H1>
-      <Muted>Сканирование от {new Date(scan.scannedAt).toLocaleString("ru-RU")}</Muted>
-      <Card>
-        <Row label="VIN" value={scan.vin} mono />
-        <Row label="Производитель" value={info?.make ?? offline?.make} />
-        <Row label="Модель" value={info?.model} />
-        <Row label="Модельный год" value={resolveModelYear(offline, info)} />
-        <Row label="Двигатель" value={[info?.displacementL ? `${info.displacementL} л` : null, info?.cylinders ? `${info.cylinders} цил.` : null, info?.engine].filter(Boolean).join(" · ")} />
-        <Row label="Топливо" value={info?.fuel} />
-        <Row label="Привод" value={info?.drive} />
-        <Row label="Регион сборки" value={offline?.region} />
-        {offline && !offline.valid ? <Badge tone="bad" text={offline.problem ?? "VIN некорректен"} /> : null}
-        {!info ? <Muted>Онлайн-справочник недоступен (нет интернета или VIN не из базы): показаны данные, определённые офлайн.</Muted> : null}
-      </Card>
-
+    <View style={{ gap: 12 }}>
       {advisories.map((a, i) => (
         <Card key={i} tone={a.level === "stop" ? "bad" : a.level === "warn" ? "warn" : undefined}>
           <Body>{a.level === "stop" ? "⛔ " : a.level === "warn" ? "⚠️ " : "ℹ️ "}{a.text}</Body>
@@ -81,7 +49,7 @@ export default function VehicleScreen() {
           <Card key={ecu.txId}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
               <Body style={{ fontWeight: "700", flex: 1 }}>{ecu.name}</Body>
-              <Badge tone="accent" text={`${ecu.txId} → ${ecu.rxId}`} />
+              <Badge tone="accent" text={ecu.rxId ? `${ecu.txId} → ${ecu.rxId}` : ecu.txId} />
             </View>
             {family.id !== "generic" ? <Badge tone="good" text={family.name} /> : <Badge text="Семейство не распознано" />}
             {IDENT_DIDS.map(({ key, label }) => (
@@ -93,14 +61,14 @@ export default function VehicleScreen() {
         );
       })}
 
-      <H2>Данные по OBD-II</H2>
+      <H2>Данные OBD-II</H2>
       <Card>
         <Row label="Calibration ID" value={scan.mode09.calibrationIds.join(", ")} mono />
         <Row label="CVN (контрольные суммы)" value={scan.mode09.cvn.join(", ")} mono />
         <Row label="Имя ЭБУ" value={scan.mode09.ecuName} />
         <Row label="Поддерживаемых параметров" value={scan.supportedPids.length} />
         <Row label="Протокол" value={scan.adapter.protocol} />
-        <Row label="Адаптер" value={scan.adapter.version} />
+        <Row label="Адаптер" value={`${scan.adapter.version} · ${scan.adapter.chip}`} />
         <Row label="Напряжение" value={scan.adapter.voltage !== null ? `${scan.adapter.voltage.toFixed(1)} В` : null} />
       </Card>
 
@@ -115,7 +83,7 @@ export default function VehicleScreen() {
             <Muted>{d.description ?? "Описание этого кода пока не добавлено в справочник"}</Muted>
           </View>
         ))}
-        {scan.dtcs.length > 0 && !confirmClear ? <Button title="Сбросить ошибки" kind="ghost" onPress={() => setConfirmClear(true)} /> : null}
+        {scan.dtcs.length > 0 && !confirmClear && elm ? <Button title="Сбросить ошибки" kind="ghost" onPress={() => setConfirmClear(true)} /> : null}
         {confirmClear ? (
           <View style={{ gap: 8 }}>
             <Body style={{ color: colors.warn }}>Сброс удалит коды и данные для диагностики. Сначала запишите их. Продолжить?</Body>
@@ -133,7 +101,11 @@ export default function VehicleScreen() {
       <H2>Данные в реальном времени</H2>
       <LivePanel />
 
-      <Button title="Что можно улучшить" onPress={() => router.push("/tune")} />
+      <H2>Отчёты</H2>
+      <Button title="Отправить отчёт о сканировании" kind="ghost" onPress={() => void Share.share({ message: buildReportText(scan) })} />
+      {Platform.OS === "web" ? (
+        <Button title="Распечатать / сохранить в PDF" kind="ghost" onPress={() => void printHtml(buildReportHtml(scan, store.data.settings.workshopName || "AutoFlash"), buildReportText(scan))} />
+      ) : null}
       {vehicle && vehicle.scans.length >= 2 ? (
         <Button
           title="Отчёт «до и после» (первое и последнее сканирование)"
@@ -147,8 +119,7 @@ export default function VehicleScreen() {
       ) : (
         <Muted>Отчёт «до и после» появится после второго сканирования этого авто.</Muted>
       )}
-      <Button title="Создать заказ для этого авто" kind="ghost" onPress={createJob} />
-      <Button title="Просканировать заново" kind="ghost" onPress={() => void runScan()} loading={scanning} />
-    </Screen>
+      <Button title="Просканировать заново" kind="ghost" onPress={() => void runScan()} loading={scanning} disabled={!elm} />
+    </View>
   );
 }

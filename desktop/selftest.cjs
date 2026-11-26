@@ -265,10 +265,10 @@ async function run(win, outDir, app) {
     await goTo("2. Авто и прошивки", "cars");
     // Вкладка помнит последний экран (установка): возвращаемся к списку.
     if (!(await text()).includes("Библиотека пакетов прошивки")) {
-      await js("history.back()");
+      await click("2. Авто и прошивки");
       await sleep(900);
     }
-    step("конструктор: кнопка в библиотеке", await click("Создать пакет из своего файла"));
+    { const okb = await click("Создать пакет из своего файла"); step("конструктор: кнопка в библиотеке", okb, okb ? undefined : `${await js("location.pathname")} | ${(await text()).slice(0, 300).replace(/\s+/g, " ")}`); }
     step("конструктор: экран открыт", await waitText("Конструктор пакета прошивки", 4000));
     await click("Создать пакет");
     step("конструктор: пустая форма не принимается и объясняет почему", await waitText("Укажите название пакета", 3000));

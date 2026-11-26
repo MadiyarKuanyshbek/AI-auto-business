@@ -17,7 +17,7 @@ export type DesktopBridge = {
     openFolder(): Promise<string>;
   };
   adb: {
-    run(args: { op: "version" | "devices" | "connect" | "disconnect" | "packages" | "install" | "uninstall" | "reboot"; serial?: string; address?: string; pkg?: string }): Promise<{ ok: boolean; out: string }>;
+    run(args: { op: "version" | "devices" | "connect" | "disconnect" | "packages" | "install" | "uninstall" | "reboot" | "locale" | "settings"; serial?: string; address?: string; pkg?: string }): Promise<{ ok: boolean; out: string }>;
     pickApk(): Promise<string | null>;
     setApkForTest(file: string): Promise<boolean>;
   };

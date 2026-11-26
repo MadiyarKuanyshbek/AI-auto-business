@@ -159,6 +159,12 @@ ipcMain.handle("adb:run", async (_e, { op, serial, address, pkg }) => {
     case "uninstall":
       if (!SERIAL_RE.test(String(serial)) || !PKG_RE.test(String(pkg))) return { ok: false, out: "Некорректные данные" };
       return runAdb(["-s", serial, "uninstall", pkg], 60000);
+    case "locale":
+      if (!SERIAL_RE.test(String(serial))) return { ok: false, out: "Некорректное устройство" };
+      return runAdb(["-s", serial, "shell", "am", "start", "-a", "android.settings.LOCALE_SETTINGS"], 15000);
+    case "settings":
+      if (!SERIAL_RE.test(String(serial))) return { ok: false, out: "Некорректное устройство" };
+      return runAdb(["-s", serial, "shell", "am", "start", "-a", "android.settings.SETTINGS"], 15000);
     case "reboot":
       if (!SERIAL_RE.test(String(serial))) return { ok: false, out: "Некорректное устройство" };
       return runAdb(["-s", serial, "reboot"], 15000);

@@ -127,7 +127,7 @@ export default function AppsScreen() {
       </Card>
 
       <Card>
-        <Body style={{ fontWeight: "700" }}>3. Установленные приложения</Body>
+        <Body style={{ fontWeight: "700" }}>3. Приложения и язык</Body>
         <Button title="Показать список" kind="ghost" disabled={!serial} onPress={() => void loadPackages()} />
         {packages.map((p) => (
           <View key={p} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
@@ -137,6 +137,8 @@ export default function AppsScreen() {
             </Pressable>
           </View>
         ))}
+        <Button title="Открыть выбор языка на магнитоле" kind="ghost" disabled={!serial} onPress={() => void (serial && bridge.adb.run({ op: "locale", serial }))} />
+        <Button title="Открыть настройки магнитолы" kind="ghost" disabled={!serial} onPress={() => void (serial && bridge.adb.run({ op: "settings", serial }))} />
         <Button title="Перезагрузить магнитолу" kind="ghost" disabled={!serial} onPress={() => void (serial && bridge.adb.run({ op: "reboot", serial }))} />
       </Card>
 

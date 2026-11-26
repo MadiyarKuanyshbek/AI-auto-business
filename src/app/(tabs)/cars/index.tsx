@@ -147,6 +147,7 @@ export default function CarsScreen() {
       <Card>
         <Muted>Пакет (.afpkg / .json) содержит прошивку и инструкцию по установке в блок. Загруженные пакеты используются при подключении к авто: приложение само предложит установку или обновление.</Muted>
         <Button title="Добавить пакет из файла" kind="ghost" onPress={() => void importPackage()} />
+        <Button title="Приложения и русификация магнитолы (Wi-Fi)" kind="ghost" onPress={() => router.push("/cars/apps")} />
         <Button title="Создать пакет из своего файла" kind="ghost" onPress={() => router.push("/cars/builder")} />
         {libMessage ? <Body>{libMessage}</Body> : null}
         {userPackages.map((p) => (

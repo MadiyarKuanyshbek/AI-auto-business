@@ -26,6 +26,11 @@ contextBridge.exposeInMainWorld("autoflash", {
     save: (json, name) => ipcRenderer.invoke("backup:save", { json, name }),
     openFolder: () => ipcRenderer.invoke("backup:open-folder"),
   },
+  adb: {
+    run: (args) => ipcRenderer.invoke("adb:run", args),
+    pickApk: () => ipcRenderer.invoke("adb:pick-apk"),
+    setApkForTest: (file) => ipcRenderer.invoke("adb:set-apk-for-test", file),
+  },
   chooser: {
     onList: (cb) => {
       const handler = (_e, payload) => cb(payload);

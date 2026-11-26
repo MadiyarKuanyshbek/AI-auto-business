@@ -279,6 +279,24 @@ async function run(win, outDir, app) {
     await js("history.back()");
     await sleep(600);
 
+    // Приложения и русификация (ADB по Wi-Fi)
+    if (!(await text()).includes("Библиотека пакетов прошивки")) {
+      await goTo("2. Авто и прошивки", "cars");
+      await click("2. Авто и прошивки");
+      await sleep(900);
+    }
+    step("приложения: кнопка в разделе", await click("Приложения и русификация магнитолы (Wi-Fi)"));
+    step("приложения: экран открыт", await waitText("Установка приложений и русификация", 4000));
+    step("приложения: рекомендованные приложения и подсказка по языку", (await text()).includes("Яндекс Навигатор") && (await text()).includes("Настройки → Система → Язык"));
+    step("приложения: поле адреса", await fill("Адрес магнитолы", "abc"));
+    await click("Подключиться");
+    step("приложения: неверный адрес объясняется", await waitText("Введите адрес вида", 3000));
+    step("приложения: поле адреса 2", await fill("Адрес магнитолы", "127.0.0.1:1"));
+    await click("Подключиться");
+    step("приложения: adb.exe запущен, отказ магнитолы объяснён", await waitText("Магнитола", 40000) && !(await text()).includes("Не найден adb.exe"));
+    await js("history.back()");
+    await sleep(600);
+
     // Опрос не идёт в фоне
     await goTo("1. Подключение", "/");
     await sleep(1500);

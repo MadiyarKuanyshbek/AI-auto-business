@@ -1,7 +1,8 @@
 // Главный процесс настольного AutoFlash (Electron).
 // Приложение — это тот же интерфейс, что и в браузере, но с настоящими возможностями ПК:
 // Bluetooth LE, COM-порты (USB-кабели и спаренные Bluetooth-адаптеры) и TCP для Wi-Fi адаптеров.
-const { app, BrowserWindow, ipcMain, protocol, net, shell, session } = require("electron");
+const { app, BrowserWindow, ipcMain, protocol, net, shell, session, dialog } = require("electron");
+const { execFile } = require("node:child_process");
 const path = require("node:path");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
@@ -115,6 +116,77 @@ ipcMain.handle("backup:save", (_e, { json, name }) => {
 });
 
 ipcMain.handle("backup:open-folder", () => shell.openPath(backupDir()));
+
+// ───────────── ADB: установка приложений на магнитолу по Wi-Fi ─────────────
+// Запускаем только adb.exe из поставки и только заранее разрешённые команды. Файл .apk выбирается окном системы.
+function adbPath() {
+  return app.isPackaged ? path.join(process.resourcesPath, "adb", "adb.exe") : path.join(__dirname, "adb", "adb.exe");
+}
+let pickedApk = null;
+const SERIAL_RE = /^(\d{1,3}(\.\d{1,3}){3}:\d{1,5}|emulator-\d+|[A-Za-z0-9]{6,32})$/;
+const PKG_RE = /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/;
+
+function runAdb(args, timeout = 30000) {
+  return new Promise((resolve) => {
+    const exe = adbPath();
+    if (!fs.existsSync(exe)) return resolve({ ok: false, out: "Не найден adb.exe: переустановите приложение." });
+    execFile(exe, args, { timeout, windowsHide: true, maxBuffer: 4 * 1024 * 1024, encoding: "utf8" }, (err, stdout, stderr) => {
+      const out = `${stdout || ""}${stderr || ""}`;
+      resolve({ ok: !err && !/failed|error|unable|cannot|refused/i.test(out), out });
+    });
+  });
+}
+
+ipcMain.handle("adb:run", async (_e, { op, serial, address, pkg }) => {
+  switch (op) {
+    case "version":
+      return runAdb(["version"], 8000);
+    case "devices":
+      return runAdb(["devices"], 10000);
+    case "connect":
+      if (typeof address !== "string" || !SERIAL_RE.test(address)) return { ok: false, out: "Некорректный адрес" };
+      return runAdb(["connect", address], 15000);
+    case "disconnect":
+      if (typeof address !== "string" || !SERIAL_RE.test(address)) return { ok: false, out: "Некорректный адрес" };
+      return runAdb(["disconnect", address], 8000);
+    case "packages":
+      if (!SERIAL_RE.test(String(serial))) return { ok: false, out: "Некорректное устройство" };
+      return runAdb(["-s", serial, "shell", "pm", "list", "packages", "-3"], 20000);
+    case "install":
+      if (!SERIAL_RE.test(String(serial))) return { ok: false, out: "Некорректное устройство" };
+      if (!pickedApk || !fs.existsSync(pickedApk)) return { ok: false, out: "Сначала выберите файл .apk" };
+      return runAdb(["-s", serial, "install", "-r", pickedApk], 300000);
+    case "uninstall":
+      if (!SERIAL_RE.test(String(serial)) || !PKG_RE.test(String(pkg))) return { ok: false, out: "Некорректные данные" };
+      return runAdb(["-s", serial, "uninstall", pkg], 60000);
+    case "reboot":
+      if (!SERIAL_RE.test(String(serial))) return { ok: false, out: "Некорректное устройство" };
+      return runAdb(["-s", serial, "reboot"], 15000);
+    default:
+      return { ok: false, out: "Неизвестная операция" };
+  }
+});
+
+ipcMain.handle("adb:pick-apk", async () => {
+  const r = await dialog.showOpenDialog(win, { title: "Выберите приложение (.apk)", properties: ["openFile"], filters: [{ name: "Приложение Android", extensions: ["apk"] }] });
+  if (r.canceled || !r.filePaths[0]) return null;
+  pickedApk = r.filePaths[0];
+  return path.basename(pickedApk);
+});
+
+// Для самопроверки: подставить файл без окна выбора.
+ipcMain.handle("adb:set-apk-for-test", (_e, file) => {
+  if (!SELFTEST) return false;
+  pickedApk = String(file);
+  return true;
+});
+
+app.on("quit", () => {
+  try {
+    const exe = adbPath();
+    if (fs.existsSync(exe)) execFile(exe, ["kill-server"], { windowsHide: true }, () => {});
+  } catch {}
+});
 
 // ───────────── Окно ─────────────
 function createWindow() {

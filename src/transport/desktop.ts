@@ -16,6 +16,11 @@ export type DesktopBridge = {
     save(json: string, name?: string): Promise<string>;
     openFolder(): Promise<string>;
   };
+  adb: {
+    run(args: { op: "version" | "devices" | "connect" | "disconnect" | "packages" | "install" | "uninstall" | "reboot"; serial?: string; address?: string; pkg?: string }): Promise<{ ok: boolean; out: string }>;
+    pickApk(): Promise<string | null>;
+    setApkForTest(file: string): Promise<boolean>;
+  };
   chooser: {
     onList(cb: (payload: { kind: ChooserKind; devices: ChooserDevice[] }) => void): () => void;
     pick(kind: ChooserKind, id: string | null): void;

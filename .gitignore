@@ -47,3 +47,6 @@ dist-check/
 desktop/stage/
 desktop/out/
 desktop/sim-server.cjs
+
+# adb.exe из Google platform-tools (скачивается отдельно, см. README)
+desktop/adb/

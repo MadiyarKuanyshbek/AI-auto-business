@@ -39,6 +39,8 @@ const result = await packager({
   icon: path.join(root, "desktop", "icon.ico"),
   overwrite: true,
   asar: true,
+  // adb.exe должен лежать вне архива, чтобы запускаться
+  extraResource: fs.existsSync(path.join(root, "desktop", "adb", "adb.exe")) ? [path.join(root, "desktop", "adb")] : [],
   prune: false,
   appCopyright: "AutoFlash",
 });

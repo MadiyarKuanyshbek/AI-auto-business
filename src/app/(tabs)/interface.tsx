@@ -18,6 +18,7 @@ import {
   type ThemeId,
   type TrimLevel,
 } from "../../core/interfaces";
+import { ANDROID_HEADUNIT_NOTE, installMethodFor } from "../../core/installMethods";
 import { resolveModelYear } from "../../core/vin";
 import { useSession } from "../../session";
 import { useStore } from "../../storage/store";
@@ -299,6 +300,15 @@ export default function InterfaceDemoScreen() {
           {files.map((f) => (
             <FileCard key={f.fileName} file={f} installed={!!f.packageId && installedIds.has(f.packageId)} selected={themeId === f.theme.id} onSelect={() => { setThemeId(f.theme.id); setCenterMode("scheme"); }} />
           ))}
+
+          <H2>Как это ставится у марки {car.make}</H2>
+          <Card>
+            <Body style={{ fontWeight: "700" }}>{installMethodFor(car.make).headline}</Body>
+            {installMethodFor(car.make).steps.map((t, i) => <Muted key={t}>{i + 1}. {t}</Muted>)}
+            {installMethodFor(car.make).limits.map((t) => <Muted key={t}>• {t}</Muted>)}
+            <Muted>{ANDROID_HEADUNIT_NOTE}</Muted>
+            <Muted>Сведения собраны из обсуждений владельцев и заметок производителей, на вашей версии ПО могут отличаться.</Muted>
+          </Card>
 
           <H2>Очередь установки ({store.data.queue.length})</H2>
           <Card>

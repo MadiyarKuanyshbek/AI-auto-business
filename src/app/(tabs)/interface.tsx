@@ -306,6 +306,9 @@ export default function InterfaceDemoScreen() {
             <Body style={{ fontWeight: "700" }}>{installMethodFor(car.make).headline}</Body>
             {installMethodFor(car.make).steps.map((t, i) => <Muted key={t}>{i + 1}. {t}</Muted>)}
             {installMethodFor(car.make).limits.map((t) => <Muted key={t}>• {t}</Muted>)}
+            {(installMethodFor(car.make).sources ?? []).map((src) => (
+              <Button key={src.url} title={`Источник: ${src.title}`} kind="ghost" onPress={() => void Linking.openURL(src.url)} />
+            ))}
             <Muted>{ANDROID_HEADUNIT_NOTE}</Muted>
             <Muted>Сведения собраны из обсуждений владельцев и заметок производителей, на вашей версии ПО могут отличаться.</Muted>
           </Card>

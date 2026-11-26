@@ -11,6 +11,8 @@ export type InstallMethod = {
   limits: string[];
   /** Насколько надёжны сведения. */
   confidence: "official" | "community";
+  /** Страницы, где это описано (проверяйте на вашей версии). */
+  sources?: { title: string; url: string }[];
 };
 
 const OEM_USB: InstallMethod = {
@@ -39,19 +41,64 @@ const BYD: InstallMethod = {
     "Приложение AutoFlash такие изменения не делает: это ручная работа через сторонние инструменты.",
   ],
   confidence: "community",
+  sources: [
+    { title: "BYD: руководство по меню разработчика", url: "https://github.com/wheregoes/byd-dolphin-hacking" },
+    { title: "BYD: ADB и региональная разблокировка", url: "https://sesamedisk.com/community-modding-byd-android-head-unit/" },
+  ],
+};
+
+const OTA_COMMON = [
+  "Включите на телефоне точку доступа Wi-Fi и подключите к ней магнитолу (Настройки → Wi-Fi).",
+  "Поставьте машину на стоянку (P), подключите питание или оставьте заряженную батарею: во время обновления ездить нельзя, оно может идти до часа и дольше.",
+  "Не прерывайте обновление и не глушите машину. После него проверьте настройки: они иногда сбрасываются.",
+];
+
+const CHERY_GROUP: InstallMethod = {
+  headline: "Chery / Exeed / Omoda: «Настройки → О системе → Обновление системы»",
+  steps: ["В магнитоле откройте настройки и найдите «Обновление системы» (на разных моделях путь немного отличается). Если обновление есть, система сама предложит поставить его.", ...OTA_COMMON],
+  limits: ["Обновление доступно владельцу машины, привязанному к аккаунту. Пакеты выходят партиями, у вас оно может появиться не сразу.", "Некоторые модели умеют обновляться и с USB-флешки: файл даёт дилер."],
+  confidence: "community",
+  sources: [
+    { title: "Chery Tiggo 9: обновления по воздуху", url: "https://www1.ru/en/news/2024/12/04/kak-smartfon-rossiiskii-chery-tiggo-9-budet-polucat-obnovleniia-po-vozduxu.html" },
+    { title: "Omoda: OTA и приложение", url: "https://omodaauto.co.uk/mobile-app" },
+  ],
+};
+
+const HAVAL_GROUP: InstallMethod = {
+  headline: "Haval / GWM / Tank: «Настройки → Обновление» (сеть или USB)",
+  steps: ["У Haval Jolion в настройках магнитолы есть две кнопки: обновление по сети и обновление с USB-флешки. Нажмите нужную и следуйте подсказкам.", ...OTA_COMMON],
+  limits: ["Во время обновления система недоступна, машина перезапускается.", "Файл для USB даёт дилер или официальная поддержка; чужие файлы с форумов не ставьте."],
+  confidence: "community",
+  sources: [{ title: "Haval Jolion: обновление по сети и USB", url: "https://www.bitauto.com/ask/100110025955/" }],
+};
+
+const GEELY_GROUP: InstallMethod = {
+  headline: "Geely / Zeekr: обновление с экрана «Моя машина» и из приложения",
+  steps: ["Geely рекомендует обновляться по домашнему Wi-Fi или точке доступа телефона. Скачать и поставить можно с экрана магнитолы, там же можно назначить время установки.", "У части моделей обновление можно запустить и дистанционно из приложения производителя.", ...OTA_COMMON.slice(1)],
+  limits: ["Инструкции собраны по моделям EX5 и Starray, на Coolray, Atlas, Monjaro пункты меню могут называться иначе.", "Обновления приходят партиями и не у всех в один день."],
+  confidence: "community",
+  sources: [{ title: "Geely: руководство по OTA (EX5)", url: "https://a-ap.storyblok.com/f/3000753/x/648ff7a00b/ota-how-to-guide-20250612.pdf" }],
+};
+
+const CHANGAN_GROUP: InstallMethod = {
+  headline: "Changan / Deepal: обновление по воздуху с подтверждением на экране",
+  steps: ["Changan присылает обновления в машину сама, на экране нужно подтвердить установку. В приложении MyChangan есть пункт планирования OTA.", ...OTA_COMMON.slice(1)],
+  limits: ["Подробных инструкций для вашей модели в открытых источниках не нашлось: смотрите руководство и страницу поддержки Changan."],
+  confidence: "community",
+  sources: [{ title: "Changan: программное обеспечение и обновления", url: "https://www.changaneurope.com/uk/owners/software-and-updates" }],
 };
 
 const BY_MAKE: Record<string, InstallMethod> = {
   BYD,
-  Chery: OEM_USB,
-  Exeed: OEM_USB,
-  Omoda: OEM_USB,
-  Haval: OEM_USB,
-  "Great Wall": OEM_USB,
-  Tank: OEM_USB,
-  Geely: OEM_USB,
-  Zeekr: OEM_USB,
-  Changan: OEM_USB,
+  Chery: CHERY_GROUP,
+  Exeed: CHERY_GROUP,
+  Omoda: CHERY_GROUP,
+  Haval: HAVAL_GROUP,
+  "Great Wall": HAVAL_GROUP,
+  Tank: HAVAL_GROUP,
+  Geely: GEELY_GROUP,
+  Zeekr: GEELY_GROUP,
+  Changan: CHANGAN_GROUP,
   JAC: OEM_USB,
   FAW: OEM_USB,
 };

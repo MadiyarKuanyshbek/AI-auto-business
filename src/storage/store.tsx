@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { VehicleScan } from "../core/scanner";
 import { desktopBridge } from "../transport/desktop";
 import { parsePackage } from "../core/package";
-import { EMPTY_DATA, newId, sanitizeData, vehicleTitle, type AppData, type CarMedia, type InstallRecord, type Settings, type VehicleRec } from "./model";
+import { EMPTY_DATA, newId, sanitizeData, vehicleTitle, type AppData, type CarMedia, type InstallRecord, type QueueItem, type Settings, type VehicleRec } from "./model";
 
 const KEY = "autoflash.v1";
 const MAX_SCANS_PER_VEHICLE = 5;
@@ -20,6 +20,8 @@ type Store = {
   addInstall(rec: InstallRecord): void;
   addMedia(carId: string, media: Omit<CarMedia, "id">): void;
   removeMedia(carId: string, mediaId: string): void;
+  enqueue(item: Omit<QueueItem, "id" | "at">): void;
+  dequeue(id: string): void;
   /** Полная копия данных в виде JSON-текста (для переноса на другой компьютер). */
   exportJson(): string;
   /** Заменяет все данные содержимым копии. Возвращает false, если это не копия AutoFlash. */
@@ -122,6 +124,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       removeMedia(carId, mediaId) {
         mutate((d) => ({ ...d, media: { ...d.media, [carId]: (d.media[carId] ?? []).filter((m) => m.id !== mediaId) } }));
+      },
+      enqueue(item) {
+        mutate((d) => (d.queue.some((q) => q.carId === item.carId && q.fileName === item.fileName) ? d : { ...d, queue: [...d.queue, { id: newId(), at: Date.now(), ...item }] }));
+      },
+      dequeue(id) {
+        mutate((d) => ({ ...d, queue: d.queue.filter((q) => q.id !== id) }));
       },
       updateSettings(patch) {
         mutate((d) => ({ ...d, settings: { ...d.settings, ...patch } }));

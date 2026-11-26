@@ -80,6 +80,7 @@ export default function InterfaceDemoScreen() {
   const files = useMemo(() => (car ? interfaceFilesFor(car, trim, readyByTheme) : []), [car, trim, readyByTheme]);
   const theme: InterfaceTheme | null = themeId ? (THEMES.find((t) => t.id === themeId) ?? null) : null;
   const selectedFile = files.find((f) => f.theme.id === themeId) ?? null;
+  const queued = !!selectedFile && !!car && store.data.queue.some((q) => q.carId === car.id && q.fileName === selectedFile.fileName);
   const results = useMemo(() => searchCars(query), [query]);
   const media = car ? (store.data.media[car.id] ?? []) : [];
   const photos = media.filter((m) => m.kind === "image");
@@ -163,6 +164,17 @@ export default function InterfaceDemoScreen() {
                     <Muted>Превью показывает, как будет выглядеть интерфейс. Установить можно, когда для этой модели появится пакет.</Muted>
                   </>
                 )}
+                {selectedFile && car ? (
+                  queued ? (
+                    <Badge tone="good" text="В очереди: установится при подключении к этому авто" />
+                  ) : (
+                    <Button
+                      title="Подготовить к установке (без адаптера)"
+                      kind="ghost"
+                      onPress={() => store.enqueue({ carId: car.id, carTitle: `${car.make} ${car.model}`, themeId: selectedFile.theme.id, fileName: selectedFile.fileName, title: selectedFile.theme.name })}
+                    />
+                  )
+                ) : null}
                 <Button title="Вернуть стандартный вид" kind="ghost" onPress={() => setThemeId(null)} />
                 <Body style={{ fontWeight: "600" }}>Что изменится на экране</Body>
                 {theme.changes.map((c) => (
@@ -287,6 +299,31 @@ export default function InterfaceDemoScreen() {
           {files.map((f) => (
             <FileCard key={f.fileName} file={f} installed={!!f.packageId && installedIds.has(f.packageId)} selected={themeId === f.theme.id} onSelect={() => { setThemeId(f.theme.id); setCenterMode("scheme"); }} />
           ))}
+
+          <H2>Очередь установки ({store.data.queue.length})</H2>
+          <Card>
+            {store.data.queue.length === 0 ? (
+              <Muted>Адаптера пока нет? Выберите файл и нажмите «Подготовить к установке». Он сохранится здесь и предложится, когда вы подключитесь к этому автомобилю по Bluetooth.</Muted>
+            ) : (
+              store.data.queue.map((q) => (
+                <View key={q.id} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Body style={{ fontWeight: "600" }}>{q.title}</Body>
+                    <Muted>{q.carTitle}</Muted>
+                  </View>
+                  <Pressable onPress={() => store.dequeue(q.id)}><Text style={{ color: colors.bad, fontSize: 13 }}>Убрать</Text></Pressable>
+                </View>
+              ))
+            )}
+          </Card>
+
+          <H2>Где искать настоящие файлы</H2>
+          <Card>
+            <Muted>Готовых файлов для этой модели в приложении пока нет. Официальные обновления выпускает производитель, а коды изменений экранов обсуждают владельческие форумы. Проверяйте источник, версию блока и отзывы: чужой файл не от вашего блока может его повредить.</Muted>
+            <Button title="Официальные обновления и сервис" kind="ghost" onPress={() => void Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(`${car.make} ${car.model} software update official`)}`)} />
+            <Button title="Кодирование экранов (форумы)" kind="ghost" onPress={() => void Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(`${car.make} ${car.model} cluster infotainment coding display options`)}`)} />
+            <Button title="Фото салона" kind="ghost" onPress={() => void Linking.openURL(`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(`${car.make} ${car.model} interior dashboard`)}`)} />
+          </Card>
 
           <H2>Фото и видео салона</H2>
           <Card>

@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
+import { matchScannedCar } from "../../core/cars";
 import { DEMO_VEHICLES } from "../../core/sim/vehicles";
 import { useSession } from "../../session";
 import { useStore } from "../../storage/store";
@@ -217,6 +218,7 @@ const BUS_TEXT = { can11: "CAN 11 бит", can29: "CAN 29 бит", kline: "K-Lin
 /** Зона «Подключённый автомобиль»: какое авто определено и через что именно подключились. */
 function VehicleZone({ onOpen }: { onOpen: () => void }) {
   const { connection, liveScan, scanning, progress } = useSession();
+  const store = useStore();
   const ready = connection.status === "ready";
 
   if (!ready) {
@@ -224,6 +226,7 @@ function VehicleZone({ onOpen }: { onOpen: () => void }) {
       <Card>
         <H2>Подключённый автомобиль</H2>
         <Muted>Подключитесь к адаптеру: автомобиль определится сам, и здесь появятся его данные и способ подключения.</Muted>
+        <Muted>Без адаптера связаться с блоками автомобиля нельзя: сам телефон или компьютер по Bluetooth к блокам не подключается, для этого нужен маленький Bluetooth-адаптер в разъёме OBD. Пока его нет, во вкладке 3 можно выбрать файлы и подготовить их: они встанут в очередь и предложатся при первом подключении.</Muted>
       </Card>
     );
   }
@@ -238,6 +241,8 @@ function VehicleZone({ onOpen }: { onOpen: () => void }) {
   }
 
   const info = liveScan.vinOnline;
+  const ids = new Set(matchScannedCar(info?.make ?? liveScan.vinInfo?.make, info?.model, resolveModelYear(liveScan.vinInfo, info)).map((c) => c.id));
+  const waiting = store.data.queue.filter((q) => ids.has(q.carId));
   return (
     <Card tone="good">
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
@@ -256,6 +261,12 @@ function VehicleZone({ onOpen }: { onOpen: () => void }) {
       <Row label="Блоков управления" value={liveScan.ecus.length} />
       <Row label="Ошибок" value={liveScan.dtcs.length} />
       {!liveScan.adapter.isStn ? <Muted>Этот адаптер не умеет отправлять длинные сообщения, поэтому устанавливать прошивки через него нельзя. Для прошивки нужен адаптер на чипе STN (например OBDLink CX или MX+).</Muted> : null}
+      {waiting.length > 0 ? (
+        <>
+          <Body style={{ fontWeight: "700" }}>Ждут установки в этот автомобиль ({waiting.length})</Body>
+          {waiting.map((q) => <Muted key={q.id}>• {q.title}</Muted>)}
+        </>
+      ) : null}
       <Button title="Открыть авто и прошивки" onPress={onOpen} />
     </Card>
   );

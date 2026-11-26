@@ -27,6 +27,9 @@ export type InstallRecord = { vin: string; ecuTxId: string; packageId: string; v
 /** Фото салона и ссылки на видео, которые пользователь прикрепил к автомобилю из справочника. */
 export type CarMedia = { id: string; kind: "image" | "link"; title: string; url: string };
 
+/** Файл интерфейса, подготовленный заранее (без адаптера): ставится при подключении к этому автомобилю. */
+export type QueueItem = { id: string; carId: string; carTitle: string; themeId: string; fileName: string; title: string; at: number };
+
 export type AppData = {
   settings: Settings;
   /** Загруженные и созданные пакеты прошивки (сырой JSON; проверяются при чтении). */
@@ -35,9 +38,11 @@ export type AppData = {
   vehicles: VehicleRec[];
   /** Прикреплённые к моделям материалы: ключ — id записи справочника. */
   media: Record<string, CarMedia[]>;
+  /** Очередь установки: подготовлено заранее, ждёт подключения к автомобилю. */
+  queue: QueueItem[];
 };
 
-export const EMPTY_DATA: AppData = { settings: DEFAULT_SETTINGS, packages: [], installs: [], vehicles: [], media: {} };
+export const EMPTY_DATA: AppData = { settings: DEFAULT_SETTINGS, packages: [], installs: [], vehicles: [], media: {}, queue: [] };
 
 export const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
@@ -62,6 +67,7 @@ export function sanitizeData(raw: unknown): AppData {
     installs: arr<InstallRecord>(r.installs),
     vehicles: arr<VehicleRec>(r.vehicles).map((v) => ({ ...v, scans: Array.isArray(v.scans) ? v.scans : [] })),
     media,
+    queue: arr<QueueItem>(r.queue).filter((q) => typeof q.carId === "string" && typeof q.fileName === "string"),
   };
 }
 

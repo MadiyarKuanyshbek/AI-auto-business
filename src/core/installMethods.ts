@@ -88,6 +88,24 @@ const CHANGAN_GROUP: InstallMethod = {
   sources: [{ title: "Changan: программное обеспечение и обновления", url: "https://www.changaneurope.com/uk/owners/software-and-updates" }],
 };
 
+const GAC_GROUP: InstallMethod = {
+  headline: "GAC (Empow, GS4, GS8, M6, M8): обновление магнитолы у официального дилера",
+  steps: [
+    "В России GAC выпускает обновления мультимедиа через дилеров: версию и совместимость проверяют по VIN на официальном сайте GAC, а установку делает дилер.",
+    "Обновление 2025 года добавило поддержку Android Auto: сначала для GS8 II, а Empow, GS8, GS8 Traveller, M8 и GS4 должны получить его позже.",
+    "В руководстве Empow есть раздел «OTA-обновление», где описано обновление по воздуху: откройте его в инструкции к вашей машине.",
+  ],
+  limits: [
+    "Приложения (.apk) в заводскую магнитолу установить нельзя, подтверждений обратного для GAC я не нашёл.",
+    "Вышло ли обновление именно для вашей машины и какие в нём изменения, уточняйте у дилера.",
+  ],
+  confidence: "community",
+  sources: [
+    { title: "GAC: обновление мультимедиа и Android Auto", url: "https://trashbox.ru/link/2025-07-11-nuzhno-lish-obnovit-multimedia" },
+    { title: "GAC Empow: руководство владельца", url: "https://en.gacmotorsaudi.com/pdfs/empow-manual-english.pdf" },
+  ],
+};
+
 const BY_MAKE: Record<string, InstallMethod> = {
   BYD,
   Chery: CHERY_GROUP,
@@ -99,6 +117,7 @@ const BY_MAKE: Record<string, InstallMethod> = {
   Geely: GEELY_GROUP,
   Zeekr: GEELY_GROUP,
   Changan: CHANGAN_GROUP,
+  GAC: GAC_GROUP,
   JAC: OEM_USB,
   FAW: OEM_USB,
 };

@@ -188,6 +188,7 @@ const RAW: Record<string, RawMake> = {
   GAZ: { ru: ["газ"], models: ["Gazelle Next /газель некст: 2013-", "Gazelle Business /газель бизнес: 2010-", "Sobol /соболь: 2010-", "Valdai: 2012-"] },
   Chery: { ru: ["чери", "чэри"], models: ["Tiggo 4 /тигго: 2018-", "Tiggo 7 Pro /тигго 7: 2020-", "Tiggo 8 /тигго 8: 2018-", "Tiggo 8 Pro: 2021-", "Arrizo 6 /аризо: 2016-", "Arrizo 8: 2022-", "Omoda C5: 2022-", "Exeed TXL: 2019-", "Exeed VX: 2021-", "Exeed LX: 2020-"] },
   Geely: { ru: ["джили", "гели"], models: ["Coolray /кулрей: 2018-", "Atlas /атлас: 2016-", "Atlas Pro: 2021-", "Tugella /тугелла: 2019-", "Monjaro /монджаро: 2021-", "Emgrand /эмгранд: 2016-", "Okavango: 2020-", "Preface: 2020-", "Geometry C: 2020-", "Starray: 2022-"] },
+  GAC: { ru: ["гак", "джи эй си", "трумпчи"], models: ["Empow /эмпоу: 2021-", "GS3 /жс3: 2017-", "GS4 /жс4: 2016-", "GS5: 2018-", "GS8 /жс8: 2017-", "GS8 II: 2022-", "M6 /м6: 2018-", "M8 /м8: 2019-", "GA6: 2018-", "GA8: 2019-", "Aion S: 2019-", "Aion Y: 2021-"] },
   Haval: { ru: ["хавейл", "хавал"], models: ["Jolion /джолион: 2020-", "F7 /ф7: 2018-", "F7x: 2019-", "H6 /аш6: 2017-", "H9 /аш9: 2014-", "Dargo /дарго: 2021-", "M6: 2022-", "Big Dog: 2022-"] },
   "Great Wall": { ru: ["грейт волл", "грейт вол"], models: ["Poer /поер: 2019-", "Wingle /вингл: 2006-", "Hover H5: 2010-", "Hover H3: 2010-"] },
   Changan: { ru: ["чанган"], models: ["CS35 Plus /цс35: 2018-", "CS55 Plus: 2019-", "CS75 Plus /цс75: 2019-", "UNI-K: 2020-", "UNI-T: 2020-", "UNI-V: 2021-", "Alsvin: 2018-", "Eado Plus: 2018-"] },

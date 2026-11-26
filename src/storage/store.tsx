@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { VehicleScan } from "../core/scanner";
 import { desktopBridge } from "../transport/desktop";
 import { parsePackage } from "../core/package";
-import { EMPTY_DATA, newId, sanitizeData, vehicleTitle, type AppData, type Customer, type InstallRecord, type Job, type Settings, type VehicleRec } from "./model";
+import { EMPTY_DATA, newId, sanitizeData, vehicleTitle, type AppData, type CarMedia, type InstallRecord, type Settings, type VehicleRec } from "./model";
 
 const KEY = "autoflash.v1";
 const MAX_SCANS_PER_VEHICLE = 5;
@@ -11,23 +11,16 @@ const MAX_SCANS_PER_VEHICLE = 5;
 type Store = {
   loaded: boolean;
   data: AppData;
-  addCustomer(c: Pick<Customer, "name" | "phone" | "notes">): Customer;
-  updateCustomer(id: string, patch: Partial<Customer>): void;
-  removeCustomer(id: string): void;
   /** Сохраняет результат сканирования: находит авто по VIN или создаёт карточку. */
-  saveScan(scan: VehicleScan, customerId?: string | null): VehicleRec;
-  updateVehicle(id: string, patch: Partial<VehicleRec>): void;
-  addJob(j: Pick<Job, "title"> & Partial<Job>): Job;
-  updateJob(id: string, patch: Partial<Job>): void;
-  logJob(id: string, text: string): void;
-  removeJob(id: string): void;
-  setCatalogJson(json: unknown): void;
+  saveScan(scan: VehicleScan): VehicleRec;
   updateSettings(patch: Partial<Settings>): void;
   /** Добавляет пакет прошивки в библиотеку после проверки формата и контрольных сумм. */
   addPackage(json: unknown): { ok: true; title: string } | { ok: false; error: string };
   removePackage(id: string, version: string): void;
   addInstall(rec: InstallRecord): void;
-  /** Полная копия данных в виде JSON-текста (для резервной копии и переноса на другой компьютер). */
+  addMedia(carId: string, media: Omit<CarMedia, "id">): void;
+  removeMedia(carId: string, mediaId: string): void;
+  /** Полная копия данных в виде JSON-текста (для переноса на другой компьютер). */
   exportJson(): string;
   /** Заменяет все данные содержимым копии. Возвращает false, если это не копия AutoFlash. */
   importJson(json: string): boolean;
@@ -70,7 +63,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const bridge = desktopBridge();
     const today = new Date().toISOString().slice(0, 10);
     if (!bridge || data.settings.lastBackupDay === today) return;
-    if (data.customers.length + data.vehicles.length + data.jobs.length === 0) return;
+    if (data.vehicles.length + data.packages.length + data.installs.length === 0) return;
     bridge.backup
       .save(JSON.stringify({ app: "autoflash", version: 1, exportedAt: Date.now(), ...data }, null, 2))
       .then(() => setData((d) => ({ ...d, settings: { ...d.settings, lastBackupDay: today } })))
@@ -83,64 +76,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     () => ({
       loaded,
       data,
-      addCustomer(c) {
-        const customer: Customer = { id: newId(), createdAt: Date.now(), ...c };
-        mutate((d) => ({ ...d, customers: [customer, ...d.customers] }));
-        return customer;
-      },
-      updateCustomer(id, patch) {
-        mutate((d) => ({ ...d, customers: d.customers.map((c) => (c.id === id ? { ...c, ...patch } : c)) }));
-      },
-      removeCustomer(id) {
-        mutate((d) => ({
-          ...d,
-          customers: d.customers.filter((c) => c.id !== id),
-          vehicles: d.vehicles.map((v) => (v.customerId === id ? { ...v, customerId: null } : v)),
-          jobs: d.jobs.map((j) => (j.customerId === id ? { ...j, customerId: null } : j)),
-        }));
-      },
-      saveScan(scan, customerId = null) {
+      saveScan(scan) {
         const d = dataRef.current;
         const existing = scan.vin ? d.vehicles.find((v) => v.vin === scan.vin) : undefined;
         let result: VehicleRec;
         let next: AppData;
         if (existing) {
-          result = { ...existing, customerId: customerId ?? existing.customerId, scans: [...existing.scans, scan].slice(-MAX_SCANS_PER_VEHICLE) };
+          result = { ...existing, scans: [...existing.scans, scan].slice(-MAX_SCANS_PER_VEHICLE) };
           next = { ...d, vehicles: d.vehicles.map((v) => (v.id === existing.id ? result : v)) };
         } else {
-          result = { id: newId(), customerId, vin: scan.vin ?? "", title: vehicleTitle(scan), plate: "", createdAt: Date.now(), scans: [scan] };
+          result = { id: newId(), vin: scan.vin ?? "", title: vehicleTitle(scan), createdAt: Date.now(), scans: [scan] };
           next = { ...d, vehicles: [result, ...d.vehicles] };
         }
         dataRef.current = next;
         setData(next);
         return result;
-      },
-      updateVehicle(id, patch) {
-        mutate((d) => ({ ...d, vehicles: d.vehicles.map((v) => (v.id === id ? { ...v, ...patch } : v)) }));
-      },
-      addJob(j) {
-        const now = Date.now();
-        const job: Job = {
-          id: newId(), vehicleId: null, customerId: null, status: "new", priceKzt: 0, paidKzt: 0, notes: "",
-          createdAt: now, updatedAt: now, log: [{ t: now, text: "Заказ создан" }], ...j,
-        };
-        mutate((d) => ({ ...d, jobs: [job, ...d.jobs] }));
-        return job;
-      },
-      updateJob(id, patch) {
-        mutate((d) => ({ ...d, jobs: d.jobs.map((j) => (j.id === id ? { ...j, ...patch, updatedAt: Date.now() } : j)) }));
-      },
-      logJob(id, text) {
-        mutate((d) => ({
-          ...d,
-          jobs: d.jobs.map((j) => (j.id === id ? { ...j, updatedAt: Date.now(), log: [...j.log, { t: Date.now(), text }] } : j)),
-        }));
-      },
-      removeJob(id) {
-        mutate((d) => ({ ...d, jobs: d.jobs.filter((j) => j.id !== id) }));
-      },
-      setCatalogJson(json) {
-        mutate((d) => ({ ...d, catalogJson: json }));
       },
       addPackage(json) {
         const parsed = parsePackage(json);
@@ -156,10 +106,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return { ok: true, title: `${parsed.pkg.title} v${version}` };
       },
       removePackage(id, version) {
-        mutate((d) => ({ ...d, packages: d.packages.filter((p) => { const q = p as { id?: string; version?: string }; return !(q.id === id && q.version === version); }) }));
+        mutate((d) => ({
+          ...d,
+          packages: d.packages.filter((p) => {
+            const q = p as { id?: string; version?: string };
+            return !(q.id === id && q.version === version);
+          }),
+        }));
       },
       addInstall(rec) {
         mutate((d) => ({ ...d, installs: [...d.installs, rec] }));
+      },
+      addMedia(carId, media) {
+        mutate((d) => ({ ...d, media: { ...d.media, [carId]: [...(d.media[carId] ?? []), { id: newId(), ...media }] } }));
+      },
+      removeMedia(carId, mediaId) {
+        mutate((d) => ({ ...d, media: { ...d.media, [carId]: (d.media[carId] ?? []).filter((m) => m.id !== mediaId) } }));
       },
       updateSettings(patch) {
         mutate((d) => ({ ...d, settings: { ...d.settings, ...patch } }));
@@ -170,7 +132,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       importJson(json) {
         try {
           const raw = JSON.parse(json) as Record<string, unknown>;
-          if (raw?.app !== "autoflash" && !Array.isArray(raw?.customers)) return false;
+          if (raw?.app !== "autoflash") return false;
           const next = sanitizeData(raw);
           dataRef.current = next;
           setData(next);

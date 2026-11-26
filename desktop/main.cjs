@@ -119,8 +119,8 @@ ipcMain.handle("backup:open-folder", () => shell.openPath(backupDir()));
 // ───────────── Окно ─────────────
 function createWindow() {
   win = new BrowserWindow({
-    width: 1100,
-    height: 780,
+    width: 1280,
+    height: 820,
     minWidth: 420,
     minHeight: 600,
     title: "AutoFlash",

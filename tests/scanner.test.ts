@@ -51,7 +51,8 @@ describe.each(DEMO_VEHICLES.map((v) => [v.label, v] as const))("scan %s", (_labe
     expect(scan.vin).toBe(vehicle.vin);
     expect(scan.mode09.calibrationIds[0]).toBe(vehicle.calibrationIds[0]);
     expect(scan.mode09.cvn).toEqual(vehicle.cvn);
-    expect(scan.ecus.length).toBe(vehicle.ecus.length);
+    // Блоки вне 7E0–7E7 находит только глубокий поиск.
+    expect(scan.ecus.length).toBe((vehicle.bus ?? "can11") === "can11" ? vehicle.ecus.filter((e) => /^7E[0-7]$/.test(e.txId)).length : vehicle.ecus.length);
     expect(scan.ecus[0].ident.vin).toBe(vehicle.vin);
     expect(scan.dtcs.map((d) => d.code).sort()).toEqual([...(vehicle.ecus[0].dtcs ?? [])].sort());
     expect(scan.adapter.voltage).toBeCloseTo(vehicle.voltage, 1);
@@ -157,5 +158,29 @@ describe("DTC reference", () => {
     expect(describeDtc("P1234")).toMatch(/производителя/);
     expect(describeDtc("U0100")).toMatch(/ECM/);
     expect(dtcCount()).toBeGreaterThan(200);
+  });
+});
+
+
+import { deepScan } from "../src/core/scanner";
+describe("deep scan and friendly names", () => {
+  it("finds blocks outside the standard addresses and names them", async () => {
+    const elm = new Elm327(new SimulatedAdapter(structuredClone(DEMO_VEHICLES[0])));
+    await elm.open();
+    const scan = await scanVehicle(elm, { online: false });
+    expect(scan.ecus.some((e) => e.txId === "7E4" && e.name.startsWith("Панель приборов"))).toBe(true);
+    expect(scan.ecus.some((e) => e.txId === "7A0")).toBe(false);
+    const extra = await deepScan(elm, scan.ecus);
+    expect(extra.map((e) => e.txId)).toEqual(["7A0"]);
+    expect(extra[0].name).toMatch(/Шлюз/);
+    expect(extra[0].ident.softwareVersion).toBe("0310");
+    // повторный запуск с уже известными блоками ничего нового не находит
+    expect(await deepScan(elm, [...scan.ecus, ...extra])).toEqual([]);
+  });
+  it("does nothing on non-CAN11 buses", async () => {
+    const elm = new Elm327(new SimulatedAdapter(structuredClone(DEMO_VEHICLES[3])));
+    await elm.open();
+    await scanVehicle(elm, { online: false });
+    expect(await deepScan(elm, [])).toEqual([]);
   });
 });

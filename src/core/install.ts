@@ -1,8 +1,6 @@
-import type { Check } from "./flash";
 import type { Elm327 } from "./elm327";
 import { hexToBytes } from "./hex";
 import { computeKey, SECURITY_ALGORITHMS, type FirmwarePackage } from "./package";
-import { MIN_FLASH_VOLTAGE } from "./flash";
 import type { ScannedEcu, VehicleScan } from "./scanner";
 import { sha256Hex } from "./sha256";
 import { readIdentification, udsRequest } from "./uds";
@@ -16,6 +14,10 @@ import { readIdentification, udsRequest } from "./uds";
  * ВАЖНО: это стандартная схема, но у каждого блока свои адреса, алгоритм ключа и особенности загрузчика.
  * Пакет должен быть составлен под конкретное семейство блоков; без него установка не запускается.
  */
+
+export const MIN_FLASH_VOLTAGE = 12.5;
+
+export type Check = { id: string; ok: boolean; blocking: boolean; text: string };
 
 export type InstallProgress = (stage: string, fraction: number) => void;
 export type SegmentData = { address: number; data: Uint8Array };

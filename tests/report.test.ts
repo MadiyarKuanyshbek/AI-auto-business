@@ -39,7 +39,7 @@ describe("before/after and receipt", () => {
 describe("settings sanitising", () => {
   it("fills defaults for old or broken data", () => {
     expect(sanitizeData({}).settings).toEqual(DEFAULT_SETTINGS);
-    expect(sanitizeData({ settings: { showDemo: "yes", workshopName: 5 } }).settings.showDemo).toBe(true);
-    expect(sanitizeData({ settings: { workshopName: "Мастерская" } }).settings.workshopName).toBe("Мастерская");
+    expect(sanitizeData({ settings: { showDemo: "yes" } }).settings.showDemo).toBe(true);
+    expect(sanitizeData({ customers: [{ id: 1 }], jobs: [1], media: { x: [{ kind: "bad" }] } }).media.x).toEqual([]);
   });
 });

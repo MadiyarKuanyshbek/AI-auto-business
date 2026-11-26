@@ -57,6 +57,10 @@ export type FirmwarePackage = {
   procedure: UdsProcedure;
   segments: PackageSegment[];
   roadLegal: boolean;
+  /** Что за пакет: калибровка двигателя, коробки, интерфейс экранов и т.д. */
+  category?: "engine" | "transmission" | "interface" | "other";
+  /** Для интерфейсных пакетов: какая тема экрана устанавливается (id темы из src/core/interfaces.ts). */
+  interface?: { theme: string };
   /** Демонстрационный пакет: можно ставить только на виртуальный блок. */
   demo?: boolean;
   priceKzt?: number;

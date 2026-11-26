@@ -1,8 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Elm327 } from "./core/elm327";
-import { DEMO_CATALOG, parseCatalog, type CatalogItem } from "./core/catalog";
 import { parsePackage, type FirmwarePackage } from "./core/package";
-import { scanVehicle, type VehicleScan } from "./core/scanner";
+import { deepScan, scanVehicle, type VehicleScan } from "./core/scanner";
 import { DEMO_PACKAGES } from "./core/sim/demoPackage";
 import { SimulatedAdapter } from "./core/sim/simulator";
 import { DEMO_VEHICLES } from "./core/sim/vehicles";
@@ -27,13 +26,14 @@ type Session = {
   scanning: boolean;
   progress: { step: string; fraction: number } | null;
   scanError: string | null;
-  catalog: CatalogItem[];
   /** Пакеты прошивки из библиотеки (загруженные + демо, если включены). */
   packages: LoadedPackage[];
   connect(transport: Transport): Promise<boolean>;
   connectDemo(index: number): Promise<boolean>;
   disconnect(): Promise<void>;
   runScan(): Promise<VehicleScan | null>;
+  /** Глубокий поиск блоков по всем адресам; возвращает число найденных новых блоков. */
+  runDeepScan(): Promise<number>;
   /** Журнал обмена с адаптером. */
   exchangeLog(): Elm327["log"];
 };
@@ -60,11 +60,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const showDemo = store.data.settings.showDemo;
-  const catalog = useMemo(
-    () => [...(showDemo ? DEMO_CATALOG : []), ...parseCatalog(store.data.catalogJson)],
-    [showDemo, store.data.catalogJson],
-  );
-
   const packages = useMemo<LoadedPackage[]>(() => {
     const raw: unknown[] = [...(showDemo ? DEMO_PACKAGES : []), ...store.data.packages];
     const out: LoadedPackage[] = [];
@@ -149,6 +144,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     runScanRef.current = runScan;
   }, [runScan]);
 
+  const runDeepScan = useCallback(async () => {
+    const elm = elmRef.current;
+    const base = liveScan;
+    if (!elm || !base) return 0;
+    setScanning(true);
+    setScanError(null);
+    try {
+      const extra = await deepScan(elm, base.ecus, (step, fraction) => setProgress({ step, fraction }));
+      if (extra.length > 0) {
+        const merged: VehicleScan = { ...base, ecus: [...base.ecus, ...extra], scannedAt: Date.now() };
+        setScan(merged);
+        setLiveScan(merged);
+        store.saveScan(merged);
+      }
+      return extra.length;
+    } catch (e) {
+      setScanError(e instanceof Error ? e.message : "Не удалось выполнить глубокий поиск");
+      return 0;
+    } finally {
+      setScanning(false);
+      setProgress(null);
+    }
+  }, [liveScan, store]);
+
   const value: Session = {
     connection,
     elm: elmState,
@@ -157,12 +176,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     scanning,
     progress,
     scanError,
-    catalog,
     packages,
     connect,
     connectDemo,
     disconnect,
     runScan,
+    runDeepScan,
     exchangeLog: () => elmRef.current?.log ?? [],
   };
 

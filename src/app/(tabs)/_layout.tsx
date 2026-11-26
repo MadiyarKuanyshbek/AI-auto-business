@@ -12,6 +12,7 @@ const icon = (glyph: string) =>
 const SCREENS = [
   { name: "index", title: "Подключение", step: 1, glyph: "🔌" },
   { name: "cars", title: "Авто и прошивки", step: 2, glyph: "🚗", hasStack: true },
+  { name: "interface", title: "Демо интерфейс авто", step: 3, glyph: "🖥️" },
 ] as const;
 
 export default function TabsLayout() {
@@ -30,7 +31,7 @@ export default function TabsLayout() {
         tabBarVariant: wide ? "material" : undefined,
         tabBarLabelPosition: wide ? "beside-icon" : undefined,
         tabBarStyle: wide
-          ? { backgroundColor: colors.card, borderRightColor: colors.border, borderRightWidth: 1, width: 285, minWidth: 285, maxWidth: 285 }
+          ? { backgroundColor: colors.card, borderRightColor: colors.border, borderRightWidth: 1, width: 320, minWidth: 320, maxWidth: 320 }
           : { backgroundColor: colors.card, borderTopColor: colors.border },
         tabBarItemStyle: wide ? { justifyContent: "flex-start", paddingHorizontal: 12, height: 46 } : undefined,
         tabBarLabelStyle: wide ? { fontSize: 15, fontWeight: "600", marginLeft: 6 } : undefined,

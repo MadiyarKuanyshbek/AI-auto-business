@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { ALL_MAKES, carYears, searchCars, type Car } from "../../../core/cars";
-import { identifyFamily, matchCatalog } from "../../../core/catalog";
+import { identifyFamily } from "../../../core/catalog";
 import { firmwareForCar, packagesForEcu } from "../../../core/firmware";
 import { resolveModelYear } from "../../../core/vin";
 import { useSession } from "../../../session";
@@ -14,11 +14,11 @@ import { Badge, Body, Button, Card, Empty, Field, H1, H2, Muted, Row, Screen, co
 import { Diagnostics } from "../../../ui/Diagnostics";
 
 const EXAMPLES = ["камри", "bmw x5", "прадо 2019", "golf", "мерседес е класс", "крета"];
-const STATUS_TEXT = { ready: "Готов к установке", demo: "Демо", beta: "Бета", verified: "Проверено" } as const;
+const STATUS_TEXT = { ready: "Готов к установке", demo: "Демо" } as const;
 
 export default function CarsScreen() {
   const router = useRouter();
-  const { scan, liveScan, connection, packages, catalog } = useSession();
+  const { scan, liveScan, connection, packages } = useSession();
   const store = useStore();
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -99,15 +99,6 @@ export default function CarsScreen() {
             );
           })}
 
-          {matchCatalog(scan, catalog).length > 0 ? (
-            <Card>
-              <Body style={{ fontWeight: "700" }}>В каталоге для этого авто (файлов пока нет)</Body>
-              {matchCatalog(scan, catalog).map((m) => (
-                <Muted key={`${m.ecu.txId}-${m.item.id}`}>• {m.item.title} ({STATUS_TEXT[m.item.status]}, {m.confidence === "exact" ? "точное совпадение ПО" : "по семейству блока"})</Muted>
-              ))}
-            </Card>
-          ) : null}
-
           <Button title={showDiag ? "Скрыть подробную диагностику" : "Подробная диагностика"} kind="ghost" onPress={() => setShowDiag((v) => !v)} />
           {showDiag ? <Diagnostics /> : null}
         </>
@@ -156,6 +147,7 @@ export default function CarsScreen() {
       <Card>
         <Muted>Пакет (.afpkg / .json) содержит прошивку и инструкцию по установке в блок. Загруженные пакеты используются при подключении к авто: приложение само предложит установку или обновление.</Muted>
         <Button title="Добавить пакет из файла" kind="ghost" onPress={() => void importPackage()} />
+        <Button title="Создать пакет из своего файла" kind="ghost" onPress={() => router.push("/cars/builder")} />
         {libMessage ? <Body>{libMessage}</Body> : null}
         {userPackages.map((p) => (
           <View key={`${p.id}-${p.version}`} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
@@ -170,8 +162,8 @@ export default function CarsScreen() {
 }
 
 function CarRow({ car, open, onToggle }: { car: Car; open: boolean; onToggle: () => void }) {
-  const { packages, catalog } = useSession();
-  const entries = useMemo(() => firmwareForCar(car, packages, catalog), [car, packages, catalog]);
+  const { packages } = useSession();
+  const entries = useMemo(() => firmwareForCar(car, packages), [car, packages]);
   return (
     <Pressable onPress={onToggle}>
       <Card>
@@ -189,7 +181,7 @@ function CarRow({ car, open, onToggle }: { car: Car; open: boolean; onToggle: ()
             entries.map((e) => (
               <View key={e.key} style={{ gap: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: colors.border }}>
                 <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
-                  <Badge tone={e.status === "ready" || e.status === "verified" ? "good" : e.status === "beta" ? "warn" : "muted"} text={STATUS_TEXT[e.status]} />
+                  <Badge tone={e.status === "ready" ? "good" : "muted"} text={STATUS_TEXT[e.status]} />
                   {e.version ? <Badge text={`v${e.version}`} /> : null}
                 </View>
                 <Body style={{ fontWeight: "600" }}>{e.title}</Body>

@@ -7,13 +7,13 @@ import { buildComparisonHtml, buildComparisonText } from "../core/reportExtra";
 import { IDENT_DIDS } from "../core/uds";
 import { useSession } from "../session";
 import { useStore } from "../storage/store";
-import { Badge, Body, Button, Card, H2, Muted, Row, colors } from "./kit";
+import { Badge, Body, Button, Card, H2, Muted, Progress, Row, colors } from "./kit";
 import { LivePanel } from "./LivePanel";
 import { printHtml } from "./print";
 
 /** Подробная диагностика подключённого авто: блоки, ошибки, живые данные, отчёты. */
 export function Diagnostics() {
-  const { scan, elm, runScan, scanning } = useSession();
+  const { scan, elm, runScan, runDeepScan, scanning, progress } = useSession();
   const store = useStore();
   const [confirmClear, setConfirmClear] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -61,6 +61,14 @@ export function Diagnostics() {
         );
       })}
 
+      <Card>
+        <Body style={{ fontWeight: "700" }}>Не все блоки найдены?</Body>
+        <Muted>Обычный поиск проверяет стандартные адреса. Глубокий поиск перебирает все адреса 0x700–0x7DF, где у разных марок сидят шлюз, мультимедиа, панель приборов, кузов. Только чтение, около минуты.</Muted>
+        <Button title="Глубокий поиск блоков" kind="ghost" onPress={() => void runDeepScan().then((n) => setMessage(n > 0 ? `Найдено новых блоков: ${n}` : "Новых блоков не найдено"))} disabled={!elm || scanning} loading={scanning && !!progress} />
+        {progress ? <Progress fraction={progress.fraction} label={progress.step} /> : null}
+        {message ? <Muted>{message}</Muted> : null}
+      </Card>
+
       <H2>Данные OBD-II</H2>
       <Card>
         <Row label="Calibration ID" value={scan.mode09.calibrationIds.join(", ")} mono />
@@ -104,7 +112,7 @@ export function Diagnostics() {
       <H2>Отчёты</H2>
       <Button title="Отправить отчёт о сканировании" kind="ghost" onPress={() => void Share.share({ message: buildReportText(scan) })} />
       {Platform.OS === "web" ? (
-        <Button title="Распечатать / сохранить в PDF" kind="ghost" onPress={() => void printHtml(buildReportHtml(scan, store.data.settings.workshopName || "AutoFlash"), buildReportText(scan))} />
+        <Button title="Распечатать / сохранить в PDF" kind="ghost" onPress={() => void printHtml(buildReportHtml(scan, "AutoFlash"), buildReportText(scan))} />
       ) : null}
       {vehicle && vehicle.scans.length >= 2 ? (
         <Button
@@ -113,7 +121,7 @@ export function Diagnostics() {
           onPress={() => {
             const first = vehicle.scans[0];
             const last = vehicle.scans[vehicle.scans.length - 1];
-            void printHtml(buildComparisonHtml(first, last, { workshop: store.data.settings.workshopName }), buildComparisonText(first, last));
+            void printHtml(buildComparisonHtml(first, last, { workshop: "AutoFlash" }), buildComparisonText(first, last));
           }}
         />
       ) : (

@@ -57,6 +57,26 @@ export const CANDIDATE_ECUS_KLINE: { name: string; txId: string; rxId: string }[
   { name: "Блок 0x17 (приборы)", txId: "17", rxId: "" },
 ];
 
+const NAME_RULES: [RegExp, string][] = [
+  [/instrument|kombi|cluster|display|панел/i, "Панель приборов"],
+  [/gateway|шлюз|j533/i, "Шлюз"],
+  [/infotain|radio|headunit|head unit|mib|mmi|multimedia|hu\b/i, "Мультимедиа"],
+  [/airbag|srs|подуш/i, "Подушки безопасности"],
+  [/abs|esp|esc|brake/i, "ABS/ESP"],
+  [/dsg|mechatronic|trans|gearbox|tcu|egs|ga8hp/i, "Коробка передач"],
+  [/body|bcm|comfort|кузов/i, "Блок кузова"],
+  [/climat|hvac|aircon|климат/i, "Климат"],
+  [/steer|eps|руль/i, "Рулевое управление"],
+];
+
+/** Понятное имя блока: по названию системы, если блок его сообщил, иначе по адресу. */
+export function friendlyEcuName(fallback: string, ident: EcuIdent): string {
+  const text = `${ident.systemName ?? ""} ${ident.odxFile ?? ""}`;
+  const hit = NAME_RULES.find(([re]) => re.test(text))?.[1];
+  const base = hit ?? fallback;
+  return ident.systemName && !base.includes(ident.systemName) ? `${base} · ${ident.systemName}` : base;
+}
+
 export type ScanProgress = (step: string, fraction: number) => void;
 
 /**
@@ -109,7 +129,7 @@ export async function scanVehicle(
       await elm.target(cand.txId, cand.rxId);
       const { ident, refused } = adapter.bus === "kline" ? await readKwpIdentification(elm) : await readIdentification(elm);
       if (Object.keys(ident).length > 0 || refused > 0) {
-        ecus.push({ ...cand, name: ident.systemName ? `${cand.name} · ${ident.systemName}` : cand.name, ident, refused });
+        ecus.push({ ...cand, name: friendlyEcuName(cand.name, ident), ident, refused });
       }
     } catch (e) {
       if (e instanceof AdapterError && e.code === "bus_error") warnings.push(`${cand.txId}: ошибка шины`);
@@ -150,4 +170,40 @@ export async function scanVehicle(
 
   progress("Готово", 1);
   return { scannedAt: Date.now(), adapter, vin: vinInfo?.vin ?? vin, vinInfo, vinOnline, mode09, supportedPids, dtcs, ecus, warnings };
+}
+
+
+/**
+ * Глубокий поиск блоков: перебирает все стандартные пары адресов CAN 11 бит 0x700–0x7DF (ответ = запрос + 8),
+ * где у разных производителей сидят шлюзы, мультимедиа, панели, кузов и т.д. Только чтение.
+ * Занимает около минуты; уже найденные блоки пропускаются.
+ */
+export async function deepScan(elm: Elm327, known: ScannedEcu[], onProgress: ScanProgress = () => {}): Promise<ScannedEcu[]> {
+  const found: ScannedEcu[] = [];
+  const knownIds = new Set(known.map((e) => e.txId.toUpperCase()));
+  if (elm.bus !== "can11") return found; // адресный перебор нужен для CAN 11 бит; на других шинах блоки опрашиваются по своим адресам
+  await elm.at("ATST 19").catch(() => undefined); // таймаут ответа ~100 мс: большинство блоков отвечают быстрее
+  try {
+    const total = 0x7e0 - 0x700;
+    for (let tx = 0x700; tx < 0x7e0; tx++) {
+      const txId = tx.toString(16).toUpperCase();
+      if (knownIds.has(txId)) continue;
+      if (tx % 8 === 0) onProgress(`Поиск блоков: адрес ${txId}`, (tx - 0x700) / total);
+      const rxId = (tx + 8).toString(16).toUpperCase();
+      try {
+        await elm.target(txId, rxId);
+        const { ident, refused } = await readIdentification(elm);
+        if (Object.keys(ident).length > 0 || refused > 0) {
+          found.push({ name: friendlyEcuName(`Блок ${txId}`, ident), txId, rxId, ident, refused });
+        }
+      } catch {
+        /* на этом адресе блока нет */
+      }
+    }
+  } finally {
+    await elm.at("ATST FF").catch(() => undefined);
+    await elm.clearTarget().catch(() => undefined);
+  }
+  onProgress("Готово", 1);
+  return found;
 }

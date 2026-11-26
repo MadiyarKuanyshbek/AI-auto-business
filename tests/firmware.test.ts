@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { ALL_CARS, searchCars } from "../src/core/cars";
-import { DEMO_CATALOG } from "../src/core/catalog";
 import { firmwareForCar, packagesForEcu } from "../src/core/firmware";
 import { Elm327 } from "../src/core/elm327";
 import { scanVehicle } from "../src/core/scanner";
@@ -13,15 +12,15 @@ const pk = DEMO_PACKAGES.map((pkg) => ({ pkg }));
 describe("firmware lookup by car model", () => {
   it("shows the demo package for the matching Golf and nothing for unrelated cars", () => {
     const golf6 = searchCars("golf 2010").find((c) => /Golf Mk6/.test(c.model))!;
-    const entries = firmwareForCar(golf6, pk, DEMO_CATALOG);
+    const entries = firmwareForCar(golf6, pk);
     expect(entries.some((e) => e.kind === "package" && e.version === "1.1.0")).toBe(true); // последняя версия
     const camry = ALL_CARS.find((c) => /Camry XV70/.test(c.model))!;
-    expect(firmwareForCar(camry, pk, DEMO_CATALOG).filter((e) => e.kind === "package")).toEqual([]);
-    expect(firmwareForCar(camry, [], [])).toEqual([]);
+    expect(firmwareForCar(camry, pk).filter((e) => e.kind === "package")).toEqual([]);
+    expect(firmwareForCar(camry, [])).toEqual([]);
   });
   it("does not match the package to a Golf outside its years", () => {
     const golf8 = ALL_CARS.find((c) => /Golf Mk8/.test(c.model))!;
-    expect(firmwareForCar(golf8, pk, []).filter((e) => e.kind === "package")).toEqual([]);
+    expect(firmwareForCar(golf8, pk).filter((e) => e.kind === "package")).toEqual([]);
   });
 });
 

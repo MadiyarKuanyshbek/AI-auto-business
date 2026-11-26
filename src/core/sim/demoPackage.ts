@@ -35,6 +35,7 @@ export const DEMO_PACKAGE_V1: FirmwarePackage = buildPackage({
   procedure,
   segments: [{ address: 0x80000, data: DATA_V1 }],
   roadLegal: true,
+  category: "engine",
   demo: true,
 });
 
@@ -52,4 +53,26 @@ export const DEMO_PACKAGE_V1_1: FirmwarePackage = buildPackage({
   demo: true,
 });
 
-export const DEMO_PACKAGES: FirmwarePackage[] = [DEMO_PACKAGE_V1, DEMO_PACKAGE_V1_1];
+const CLUSTER_DATA = Uint8Array.from({ length: 4096 }, (_, i) => (i * 5 + 17) & 0xff);
+
+/** Интерфейсный пакет: тема «Классика» для панели приборов виртуального Golf. */
+export const DEMO_PACKAGE_CLUSTER: FirmwarePackage = buildPackage({
+  id: "demo-golf-cluster-classic",
+  version: "1.0.0",
+  title: "Демо: тема «Классика» для панели приборов",
+  description: "Круглые шкалы со стрелками и тёплая подсветка на панели приборов. Данные ненастоящие.",
+  category: "interface",
+  interface: { theme: "classic" },
+  target: { softwareNumbers: ["5K0920860"], txId: "7E4", vehicles: [{ make: "Volkswagen", model: "Golf", from: 2008, to: 2012 }] },
+  expectedSoftwareNumber: `5K0920860-${sha256Hex(CLUSTER_DATA).slice(0, 4).toUpperCase()}`,
+  procedure: {
+    ...procedure,
+    security: { level: 0x11, algorithm: "demo-xor-add", params: { maskHex: "33" } },
+    backup: { address: 0x10000, length: 4096, chunk: 1024 },
+  },
+  segments: [{ address: 0x10000, data: CLUSTER_DATA }],
+  roadLegal: true,
+  demo: true,
+});
+
+export const DEMO_PACKAGES: FirmwarePackage[] = [DEMO_PACKAGE_V1, DEMO_PACKAGE_V1_1, DEMO_PACKAGE_CLUSTER];

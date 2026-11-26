@@ -64,6 +64,22 @@ export const DEMO_VEHICLES: SimVehicle[] = [
         rxId: "7EA",
         dids: { 0xf187: "1K0907379AE", 0xf189: "0150", 0xf18a: "Continental", 0xf197: "ESP MK60" },
       },
+      {
+        name: "Панель приборов",
+        txId: "7E4",
+        rxId: "7EC",
+        dids: { 0xf187: "5K0920860", 0xf188: "5K0920860", 0xf189: "0721", 0xf18a: "VDO", 0xf190: "WVWZZZ1KZBW123456", 0xf197: "Kombi Instrument" },
+        flash: {
+          base: 0x10000,
+          memory: Uint8Array.from({ length: 4096 }, (_, i) => (i * 11 + 2) & 0xff),
+          seedHex: "0F1E2D3C",
+          maskHex: "33",
+          maxBlock: 0x402,
+          softwareBase: "5K0920860",
+        },
+      },
+      // Блок вне стандартных адресов 7E0–7E7: находится только глубоким поиском.
+      { name: "Шлюз", txId: "7A0", rxId: "7A8", dids: { 0xf187: "5Q0907530", 0xf189: "0310", 0xf18a: "VW", 0xf197: "Gateway J533" } },
     ],
   },
   {

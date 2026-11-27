@@ -26,6 +26,10 @@ contextBridge.exposeInMainWorld("autoflash", {
     save: (json, name) => ipcRenderer.invoke("backup:save", { json, name }),
     openFolder: () => ipcRenderer.invoke("backup:open-folder"),
   },
+  radio: {
+    get: () => ipcRenderer.invoke("radio:get"),
+    set: (kind, on) => ipcRenderer.invoke("radio:set", { kind, on }),
+  },
   net: { scan: () => ipcRenderer.invoke("net:scan") },
   adb: {
     run: (args) => ipcRenderer.invoke("adb:run", args),

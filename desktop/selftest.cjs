@@ -74,6 +74,13 @@ async function run(win, outDir, app) {
     return true;
   };
 
+  const closeSheet = async () => {
+    if ((await text()).includes("Подключено. Что сделать?")) {
+      await click("Закрыть");
+      await sleep(500);
+    }
+  };
+
   // Переход по пункту бокового меню с ожиданием смены адреса.
   const goTo = async (label, pathPart) => {
     const ok = await click(label);
@@ -132,10 +139,21 @@ async function run(win, outDir, app) {
     step("зона показывает чип адаптера и возможность прошивки", zone.includes("STN2120") && zone.includes("Прошивка возможна"));
     step("зона показывает шину и напряжение", zone.includes("CAN 11 бит") && /12\.7\s*В/.test(zone));
     await shot("02-connected-zone");
-    step("радар: нажатие на подключённый автомобиль показывает «что установить»", await click("Volkswagen Golf 6 2.0 TDI (демо)") && await waitText("Приложения и русификация", 4000) && (await text()).includes("Интерфейс и экраны"));
+    step("после подключения само предлагается выбор: что установить", await waitText("Подключено. Что сделать?", 8000) && (await text()).includes("Приложения и русификация") && (await text()).includes("Интерфейс и экраны") && (await text()).includes("Прошивки и обновления"));
     await shot("02b-car-actions");
-    await click("Закрыть");
-    await sleep(400);
+    await closeSheet();
+    step("монитор: события и обмен с адаптером видны в реальном времени", (await text()).includes("Что происходит сейчас") && (await text()).includes("Автомобиль определён") && (await text()).includes("Обмен с адаптером (виртуальный)"));
+    step("монитор: у демо подписано «Демо», а не реальный адаптер", (await text()).includes("Демо") && !(await text()).includes("Реальный адаптер"));
+    const radioOk = await js(`(async () => {
+      const g = await window.autoflash.radio.get();
+      if (!g.ok) return "get: " + (g.error || "ошибка");
+      const wifi = g.radios.find((r) => r.kind === "WiFi");
+      if (!wifi) return "нет Wi-Fi в списке";
+      const s2 = await window.autoflash.radio.set("WiFi", wifi.state === "On");
+      return s2.ok && s2.radios.find((r) => r.kind === "WiFi").state === wifi.state ? "ok" : "set: " + (s2.error || "состояние изменилось");
+    })()`);
+    step("связь компьютера: состояние Bluetooth и Wi‑Fi читается, переключение отвечает", radioOk === "ok", String(radioOk));
+    step("связь компьютера: переключатели Bluetooth и Wi‑Fi на экране", await waitText("Wi‑Fi компьютера", 30000) && (await text()).includes("Bluetooth компьютера"));
 
     // ── Вкладка «Авто и прошивки» ──
     await goTo("2. Авто и прошивки", "cars");
@@ -322,6 +340,9 @@ async function run(win, outDir, app) {
     step("радар: окно действий для адаптера", await click("Wi‑Fi адаптер 127.0.0.1") && await waitText("Подключиться к адаптеру", 4000));
     await click("Подключиться к адаптеру");
     step("TCP: автомобиль определился автоматически", await waitText("WVWZZZ1KZBW123456", 30000));
+    step("TCP: после подключения предложен выбор действий", await waitText("Подключено. Что сделать?", 8000));
+    await closeSheet();
+    step("монитор: реальный адаптер подписан «Реальный адаптер»", (await text()).includes("Реальный адаптер"));
     await sleep(800);
     const tcp = await text();
     step("зона: подключено через Wi-Fi", tcp.includes("Подключено через") && tcp.includes("Wi-Fi 127.0.0.1:35000"));

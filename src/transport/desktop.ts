@@ -16,6 +16,10 @@ export type DesktopBridge = {
     save(json: string, name?: string): Promise<string>;
     openFolder(): Promise<string>;
   };
+  radio: {
+    get(): Promise<{ ok: boolean; radios: { kind: "Bluetooth" | "WiFi"; state: string }[]; error?: string }>;
+    set(kind: "Bluetooth" | "WiFi", on: boolean): Promise<{ ok: boolean; radios: { kind: "Bluetooth" | "WiFi"; state: string }[]; error?: string }>;
+  };
   net: { scan(): Promise<{ ip: string; port: number }[]> };
   adb: {
     run(args: { op: "version" | "devices" | "connect" | "disconnect" | "packages" | "install" | "uninstall" | "reboot" | "locale" | "settings"; serial?: string; address?: string; pkg?: string }): Promise<{ ok: boolean; out: string }>;

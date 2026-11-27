@@ -14,6 +14,8 @@ import { resolveModelYear } from "../../core/vin";
 import { desktopBridge } from "../../transport/desktop";
 import { ActionSheet, type SheetAction } from "../../ui/ActionSheet";
 import { Badge, Body, Button, Card, Field, H1, H2, Muted, Progress, Row, Screen, colors } from "../../ui/kit";
+import { logEvent } from "../../liveLog";
+import { LiveMonitor, RadioPanel } from "../../ui/LiveStatus";
 import { Radar, type Blip } from "../../ui/Radar";
 
 type Mode = "demo" | "ble" | "serial" | "wifi";
@@ -105,6 +107,7 @@ export default function ConnectScreen() {
   const startRadar = useCallback(async () => {
     setRadarScanning(true);
     setFound([]);
+    logEvent("Радар: ищу устройства в сети…");
     const add = (b: Blip) => setFound((l) => (l.some((x) => x.id === b.id) ? l : [...l, b]));
     if (settings.showDemo) {
       DEMO_VEHICLES.forEach((v, i) => setTimeout(() => add({ id: `demo-${i}`, kind: "car", label: v.label, sub: "Демо" }), 500 + i * 450));
@@ -114,12 +117,38 @@ export default function ConnectScreen() {
       for (const d of list) {
         if (d.port === 5555) add({ id: `adb-${d.ip}:${d.port}`, kind: "adb", label: `Магнитола ${d.ip}`, sub: "ADB" });
         else add({ id: `obd-${d.ip}:${d.port}`, kind: "obd", label: `Wi‑Fi адаптер ${d.ip}`, sub: `порт ${d.port}` });
+        logEvent(`Радар: найдено ${d.port === 5555 ? "устройство Android (ADB)" : "Wi‑Fi адаптер OBD"} ${d.ip}:${d.port}`);
       }
+      if (list.length === 0) logEvent("Радар: устройств в сети не найдено (Wi‑Fi адаптеры и магнитолы)");
     } catch {
       // Сеть недоступна: остаются демо-автомобили и ручное подключение.
     }
     setTimeout(() => setRadarScanning(false), 1200);
   }, [bridge, settings.showDemo]);
+
+  // Подключение и определение автомобиля в журнале событий; когда авто определено, сразу предлагаем, что делать дальше.
+  const { liveScan } = session;
+  const lastStatus = useRef<string>("idle");
+  useEffect(() => {
+    if (lastStatus.current === connection.status) return;
+    lastStatus.current = connection.status;
+    if (connection.status === "connecting") logEvent(`Подключаюсь: ${connection.label}`, connection.label.indexOf("Демо") !== 0);
+    if (connection.status === "ready") logEvent(`Подключено: ${connection.label}`, connection.kind !== "demo");
+    if (connection.status === "error") logEvent(`Ошибка подключения: ${connection.message}`);
+    if (connection.status === "idle") logEvent("Отключено");
+  }, [connection]);
+  const offered = useRef<string | null>(null);
+  useEffect(() => {
+    if (!liveScan || connection.status !== "ready") {
+      if (connection.status !== "ready") offered.current = null;
+      return;
+    }
+    if (offered.current === (liveScan.vin ?? "no-vin")) return;
+    offered.current = liveScan.vin ?? "no-vin";
+    logEvent(`Автомобиль определён: ${vehicleTitle(liveScan)}`, connection.kind !== "demo");
+    const t = setTimeout(() => setSheet({ id: "connected", kind: "car", label: vehicleTitle(liveScan), sub: "Подключено", connected: true }), 400);
+    return () => clearTimeout(t);
+  }, [liveScan, connection]);
 
   useEffect(() => {
     const t = setTimeout(() => void startRadar(), 300);
@@ -183,6 +212,7 @@ export default function ConnectScreen() {
         </View>
         {bleError ? <Body style={{ color: colors.bad }}>{bleError}</Body> : null}
       </Card>
+      <RadioPanel />
       <ActionSheet
         visible={!!sheet}
         title={sheet?.label ?? ""}
@@ -295,7 +325,7 @@ export default function ConnectScreen() {
         <Muted>• Для прошивки блоков нужен отдельный интерфейс (J2534 или профильный программатор): ELM327 для записи не подходит.</Muted>
       </Card>
       )}
-      <ExchangeLog />
+      <LiveMonitor />
     </Screen>
   );
 }
@@ -364,27 +394,6 @@ function VehicleZone({ onOpen }: { onOpen: () => void }) {
         </>
       ) : null}
       <Button title="Открыть авто и прошивки" onPress={onOpen} />
-    </Card>
-  );
-}
-
-/** Журнал обмена с адаптером — нужен, чтобы разбираться с проблемами подключения. */
-function ExchangeLog() {
-  const { exchangeLog, connection } = useSession();
-  const [show, setShow] = useState(false);
-  const log = exchangeLog();
-  return (
-    <Card>
-      <H2>Журнал обмена с адаптером</H2>
-      <Muted>Подключение: {connection.status === "ready" ? connection.label : connection.status}</Muted>
-      <Button title={show ? "Скрыть" : `Показать (${log.length})`} kind="ghost" onPress={() => setShow((v) => !v)} />
-      {show
-        ? log.slice(-80).map((l, i) => (
-            <Muted key={i} style={{ fontFamily: "monospace", fontSize: 11 }}>
-              {l.dir === "tx" ? "→" : "←"} {l.text.replace(/\s+/g, " ").slice(0, 160)}
-            </Muted>
-          ))
-        : null}
     </Card>
   );
 }

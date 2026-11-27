@@ -118,6 +118,42 @@ ipcMain.handle("backup:save", (_e, { json, name }) => {
 
 ipcMain.handle("backup:open-folder", () => shell.openPath(backupDir()));
 
+// ───────────── Bluetooth и Wi-Fi компьютера: состояние и включение ─────────────
+// Используется системный интерфейс Windows (Windows.Devices.Radios) через PowerShell. Команда собирается
+// только из заранее разрешённых значений.
+const RADIO_PREAMBLE = `
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation\`1' })[0]
+function Await($WinRtTask, $ResultType) { $asTask = $asTaskGeneric.MakeGenericMethod($ResultType); $netTask = $asTask.Invoke($null, @($WinRtTask)); $netTask.Wait(-1) | Out-Null; $netTask.Result }
+[Windows.Devices.Radios.Radio, Windows.System.Devices, ContentType = WindowsRuntime] | Out-Null
+[Windows.Devices.Radios.RadioAccessStatus, Windows.System.Devices, ContentType = WindowsRuntime] | Out-Null
+Await ([Windows.Devices.Radios.Radio]::RequestAccessAsync()) ([Windows.Devices.Radios.RadioAccessStatus]) | Out-Null
+$radios = Await ([Windows.Devices.Radios.Radio]::GetRadiosAsync()) ([System.Collections.Generic.IReadOnlyList[Windows.Devices.Radios.Radio]])
+`;
+
+function runRadio(extra) {
+  return new Promise((resolve) => {
+    if (process.platform !== "win32") return resolve({ ok: false, radios: [], error: "Только Windows" });
+    const script = `${RADIO_PREAMBLE}\n${extra}\n$radios = Await ([Windows.Devices.Radios.Radio]::GetRadiosAsync()) ([System.Collections.Generic.IReadOnlyList[Windows.Devices.Radios.Radio]])\nforeach ($r in $radios) { "$($r.Kind)|$($r.State)" }`;
+    const enc = Buffer.from(script, "utf16le").toString("base64");
+    execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", enc], { timeout: 25000, windowsHide: true, encoding: "utf8" }, (err, stdout, stderr) => {
+      const radios = String(stdout)
+        .split(/\r?\n/)
+        .map((l) => l.trim().split("|"))
+        .filter((p) => p.length === 2 && (p[0] === "Bluetooth" || p[0] === "WiFi"))
+        .map((p) => ({ kind: p[0], state: p[1] }));
+      resolve({ ok: !err && radios.length > 0, radios, error: err ? String(stderr || err.message).slice(0, 200) : undefined });
+    });
+  });
+}
+
+ipcMain.handle("radio:get", () => runRadio(""));
+ipcMain.handle("radio:set", (_e, { kind, on }) => {
+  if (!["Bluetooth", "WiFi"].includes(kind) || typeof on !== "boolean") return { ok: false, radios: [], error: "Некорректный запрос" };
+  const state = on ? "On" : "Off";
+  return runRadio(`$t = $radios | Where-Object { $_.Kind -eq '${kind}' } | Select-Object -First 1\nif ($t) { Await ($t.SetStateAsync('${state}')) ([Windows.Devices.Radios.RadioAccessStatus]) | Out-Null }`);
+});
+
 // ───────────── Поиск устройств в Wi-Fi сети (радар) ─────────────
 // Проверяем только свою домашнюю сеть (/24 от адресов компьютера) и два порта: 35000 (Wi-Fi адаптеры OBD)
 // и 5555 (ADB магнитол). Ничего не отправляем, только проверяем, открыт ли порт.

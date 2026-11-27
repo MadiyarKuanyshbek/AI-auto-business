@@ -73,9 +73,9 @@ export function RadioPanel() {
 }
 
 /** Что происходит прямо сейчас: подключение, радар, связь и обмен с адаптером в реальном времени. */
-export function LiveMonitor() {
+export function LiveMonitor({ mode }: { mode: "real" | "demo" }) {
   const { connection, exchangeLog, scanning, progress } = useSession();
-  const events = useLiveEvents();
+  const events = useLiveEvents().filter((e) => e.real === (mode === "real"));
   const [, force] = useState(0);
   const [open, setOpen] = useState(true);
 
@@ -85,16 +85,17 @@ export function LiveMonitor() {
     return () => clearInterval(t);
   }, []);
 
-  const log = exchangeLog().slice(-14);
-  const real = connection.status === "ready" && connection.kind !== "demo";
+  const connected = connection.status === "ready";
+  const log = connected && (connection.kind === "demo") === (mode === "demo") ? exchangeLog().slice(-14) : [];
+  const real = mode === "real";
   const stateText =
     connection.status === "ready" ? `Подключено: ${connection.label}` : connection.status === "connecting" ? `Подключаюсь: ${connection.label}` : connection.status === "error" ? connection.message : "Не подключено";
 
   return (
-    <Card tone={real ? "good" : undefined}>
+    <Card tone={real ? (connected ? "good" : undefined) : "warn"}>
       <Pressable onPress={() => setOpen((v) => !v)} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-        <H2>Что происходит сейчас</H2>
-        <Badge tone={real ? "good" : connection.status === "ready" ? "warn" : "muted"} text={real ? "Реальный адаптер" : connection.status === "ready" ? "Демо" : open ? "Скрыть" : "Показать"} />
+        <H2>{real ? "Что происходит сейчас: реальный режим" : "Что происходит сейчас: демо"}</H2>
+        <Badge tone={real ? "good" : "warn"} text={real ? (connected ? "Реальный адаптер" : "Реальный режим") : "Демо"} />
       </Pressable>
       {open ? (
         <>
@@ -107,7 +108,7 @@ export function LiveMonitor() {
               {new Date(e.t).toLocaleTimeString("ru-RU")}  {e.text}
             </Text>
           ))}
-          <Muted style={{ fontWeight: "700" }}>Обмен с адаптером{real ? "" : connection.status === "ready" ? " (виртуальный)" : ""}</Muted>
+          <Muted style={{ fontWeight: "700" }}>{real ? "Обмен с адаптером" : "Обмен с виртуальным адаптером"}</Muted>
           {log.length === 0 ? <Muted>Обмена нет: адаптер не подключён.</Muted> : null}
           {log.map((l, i) => (
             <Text key={`${l.t}-${i}`} style={{ color: colors.muted, fontFamily: "monospace", fontSize: 11 }}>

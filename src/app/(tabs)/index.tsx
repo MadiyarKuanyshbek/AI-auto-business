@@ -18,14 +18,15 @@ import { logEvent } from "../../liveLog";
 import { LiveMonitor, RadioPanel } from "../../ui/LiveStatus";
 import { Radar, type Blip } from "../../ui/Radar";
 
-type Mode = "demo" | "ble" | "serial" | "wifi";
+type Mode = "ble" | "serial" | "wifi";
 
 export default function ConnectScreen() {
   const router = useRouter();
   const session = useSession();
   const { settings } = useStore().data;
   const { connection } = session;
-  const [mode, setMode] = useState<Mode>(settings.showDemo ? "demo" : "ble");
+  const [mode, setMode] = useState<Mode>("ble");
+  const [viewMode, setViewMode] = useState<"real" | "demo">("real");
   const [devices, setDevices] = useState<BleDeviceInfo[]>([]);
   const [scanningBle, setScanningBle] = useState(false);
   const [bleError, setBleError] = useState<string | null>(null);
@@ -96,6 +97,8 @@ export default function ConnectScreen() {
   }
 
   const ready = connection.status === "ready";
+  // Демо и реальная работа показываются раздельно: при подключении режим выбирается по самому подключению.
+  const view: "real" | "demo" = ready ? (connection.kind === "demo" ? "demo" : "real") : settings.showDemo ? viewMode : "real";
   const [showManual, setShowManual] = useState(false);
   const [radarScanning, setRadarScanning] = useState(false);
   const [found, setFound] = useState<Blip[]>([]);
@@ -107,11 +110,14 @@ export default function ConnectScreen() {
   const startRadar = useCallback(async () => {
     setRadarScanning(true);
     setFound([]);
-    logEvent("Радар: ищу устройства в сети…");
     const add = (b: Blip) => setFound((l) => (l.some((x) => x.id === b.id) ? l : [...l, b]));
-    if (settings.showDemo) {
+    if (view === "demo") {
+      logEvent("Демо: показываю виртуальные автомобили", false);
       DEMO_VEHICLES.forEach((v, i) => setTimeout(() => add({ id: `demo-${i}`, kind: "car", label: v.label, sub: "Демо" }), 500 + i * 450));
+      setTimeout(() => setRadarScanning(false), 500 + DEMO_VEHICLES.length * 450 + 600);
+      return;
     }
+    logEvent("Радар: ищу настоящие устройства в сети…");
     try {
       const list = (await bridge?.net.scan()) ?? [];
       for (const d of list) {
@@ -124,7 +130,7 @@ export default function ConnectScreen() {
       // Сеть недоступна: остаются демо-автомобили и ручное подключение.
     }
     setTimeout(() => setRadarScanning(false), 1200);
-  }, [bridge, settings.showDemo]);
+  }, [bridge, view]);
 
   // Подключение и определение автомобиля в журнале событий; когда авто определено, сразу предлагаем, что делать дальше.
   const { liveScan } = session;
@@ -196,7 +202,28 @@ export default function ConnectScreen() {
   return (
     <Screen>
       <H1>AutoFlash</H1>
-      <Muted>Радар ищет автомобили и устройства рядом. Нажмите на найденное, чтобы подключиться или выбрать, что установить.</Muted>
+      {settings.showDemo && !ready ? (
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {([["real", "Реальный режим"], ["demo", "Демо-режим"]] as const).map(([key, label]) => (
+            <Pressable
+              key={key}
+              testID={`view-${key}`}
+              onPress={() => setViewMode(key)}
+              style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: "center", backgroundColor: view === key ? (key === "demo" ? colors.warn : colors.accent) : colors.card, borderWidth: 1, borderColor: colors.border }}
+            >
+              <Text style={{ color: view === key && key === "demo" ? "#111" : colors.text, fontWeight: "800" }}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+      {view === "demo" ? (
+        <Card tone="warn">
+          <Body style={{ fontWeight: "700" }}>ДЕМО: виртуальные автомобили</Body>
+          <Muted>Настоящий адаптер не используется, в реальную машину ничего не записывается. Подходит, чтобы показать приложение.</Muted>
+        </Card>
+      ) : (
+        <Muted>Реальный режим: ищу настоящие Wi‑Fi адаптеры OBD и магнитолы в вашей сети. Bluetooth и COM-порт добавляются кнопками под радаром.</Muted>
+      )}
 
       <Card>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
@@ -204,15 +231,15 @@ export default function ConnectScreen() {
           <Badge tone={radarScanning ? "accent" : "muted"} text={radarScanning ? "Поиск…" : `Найдено: ${blips.length}`} />
         </View>
         <Radar blips={blips} scanning={radarScanning} onPick={setSheet} />
-        <Muted>🚗 автомобили · 📡 Wi‑Fi адаптеры OBD · 📺 магнитолы · 🔵 Bluetooth</Muted>
+        <Muted>{view === "demo" ? "🚗 виртуальные автомобили" : "📡 Wi‑Fi адаптеры OBD · 📺 магнитолы · 🔵 Bluetooth"}</Muted>
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
           <View style={{ flexGrow: 1 }}><Button title="Искать снова" kind="ghost" onPress={() => void startRadar()} disabled={radarScanning} /></View>
-          <View style={{ flexGrow: 1 }}><Button title="Найти Bluetooth" kind="ghost" onPress={() => void pickWebBle()} disabled={!ble.supported} /></View>
-          {serialSupported ? <View style={{ flexGrow: 1 }}><Button title="COM / USB" kind="ghost" onPress={() => void connectSerial()} /></View> : null}
+          {view === "real" ? <View style={{ flexGrow: 1 }}><Button title="Найти Bluetooth" kind="ghost" onPress={() => void pickWebBle()} disabled={!ble.supported} /></View> : null}
+          {view === "real" && serialSupported ? <View style={{ flexGrow: 1 }}><Button title="COM / USB" kind="ghost" onPress={() => void connectSerial()} /></View> : null}
         </View>
         {bleError ? <Body style={{ color: colors.bad }}>{bleError}</Body> : null}
       </Card>
-      <RadioPanel />
+      {view === "real" ? <RadioPanel /> : null}
       <ActionSheet
         visible={!!sheet}
         title={sheet?.label ?? ""}
@@ -224,7 +251,7 @@ export default function ConnectScreen() {
       <Card tone={ready ? "good" : connection.status === "error" ? "bad" : undefined}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <H2>Адаптер</H2>
-          {ready ? <Badge tone="good" text="Подключён" /> : connection.status === "connecting" ? <Badge tone="accent" text="Подключение…" /> : <Badge text="Не подключён" />}
+          {ready ? <Badge tone={connection.kind === "demo" ? "warn" : "good"} text={connection.kind === "demo" ? "Демо" : "Реальный адаптер"} /> : connection.status === "connecting" ? <Badge tone="accent" text="Подключение…" /> : <Badge text="Не подключён" />}
         </View>
         {ready ? <Body>{connection.label}</Body> : null}
         {connection.status === "error" ? <Body style={{ color: colors.bad }}>{connection.message}</Body> : null}
@@ -239,14 +266,13 @@ export default function ConnectScreen() {
 
       <VehicleZone onOpen={() => router.push("/cars")} />
 
-      {!ready ? <Button title={showManual ? "Скрыть ручное подключение" : "Подключить вручную"} kind="ghost" onPress={() => setShowManual((v) => !v)} /> : null}
+      {!ready && view === "real" ? <Button title={showManual ? "Скрыть ручное подключение" : "Подключить вручную"} kind="ghost" onPress={() => setShowManual((v) => !v)} /> : null}
 
-      {!ready && showManual ? (
+      {!ready && view === "real" && showManual ? (
         <>
           <View style={{ flexDirection: "row", gap: 8 }}>
             {(
               [
-                ...(settings.showDemo ? ([["demo", "Демо"]] as const) : []),
                 ["ble", "Bluetooth"],
                 ...(serialSupported ? ([["serial", "COM / USB"]] as const) : []),
                 ["wifi", "Wi‑Fi"],
@@ -261,16 +287,6 @@ export default function ConnectScreen() {
               </Pressable>
             ))}
           </View>
-
-          {mode === "demo" && settings.showDemo ? (
-            <Card>
-              <H2>Демо-режим</H2>
-              <Muted>Виртуальные автомобили с настоящим протоколом обмена, без железа. Подходит, чтобы показать приложение клиенту.</Muted>
-              {DEMO_VEHICLES.map((v, i) => (
-                <Button key={v.label} title={v.label} kind="ghost" onPress={() => void session.connectDemo(i)} loading={connection.status === "connecting"} />
-              ))}
-            </Card>
-          ) : null}
 
           {mode === "ble" ? (
             <Card>
@@ -317,7 +333,7 @@ export default function ConnectScreen() {
         </>
       ) : null}
 
-      {settings.hadRealScan ? null : (
+      {settings.hadRealScan || view === "demo" ? null : (
       <Card>
         <H2>Какой адаптер взять</H2>
         <Muted>• Для диагностики: OBDLink CX/MX+, Vgate iCar Pro BLE, vLinker MC+/BM+.</Muted>
@@ -325,7 +341,7 @@ export default function ConnectScreen() {
         <Muted>• Для прошивки блоков нужен отдельный интерфейс (J2534 или профильный программатор): ELM327 для записи не подходит.</Muted>
       </Card>
       )}
-      <LiveMonitor />
+      <LiveMonitor mode={view} />
     </Screen>
   );
 }

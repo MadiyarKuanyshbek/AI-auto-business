@@ -128,6 +128,10 @@ async function run(win, outDir, app) {
     step("вкладок «Клиенты» и «Настройки» нет", !menuText.includes("Клиенты и заказы") && !menuText.includes("Настройки"));
 
     // ════════ Часть 1: виртуальный автомобиль (демо-адаптер внутри приложения) ════════
+    step("режимы: по умолчанию реальный, демо отдельно", (await text()).includes("Реальный режим") && (await text()).includes("Демо-режим") && !(await text()).includes("ДЕМО: виртуальные автомобили"));
+    step("режимы: в реальном режиме видна связь компьютера, демо-машин на радаре нет", await waitText("Связь компьютера", 30000) && !(await text()).includes("Volkswagen Golf 6 2.0 TDI (демо)"));
+    step("режимы: переход в демо-режим", await click("Демо-режим") && await waitText("ДЕМО: виртуальные автомобили", 4000));
+    step("режимы: в демо нет связи компьютера и ручного подключения", !(await text()).includes("Связь компьютера") && !(await text()).includes("Подключить вручную"));
     step("радар: на экране подключения есть радар", await js("!!document.querySelector('[data-testid=radar]')"));
     step("радар: нашлись демо-автомобили", await waitText("Найдено: 6", 15000) || (await text()).includes("Найдено:"));
     step("радар: нажатие на автомобиль открывает окно действий", await click("Volkswagen Golf 6 2.0 TDI (демо)") && await waitText("Подключиться и определить авто", 4000));
@@ -142,7 +146,7 @@ async function run(win, outDir, app) {
     step("после подключения само предлагается выбор: что установить", await waitText("Подключено. Что сделать?", 8000) && (await text()).includes("Приложения и русификация") && (await text()).includes("Интерфейс и экраны") && (await text()).includes("Прошивки и обновления"));
     await shot("02b-car-actions");
     await closeSheet();
-    step("монитор: события и обмен с адаптером видны в реальном времени", (await text()).includes("Что происходит сейчас") && (await text()).includes("Автомобиль определён") && (await text()).includes("Обмен с адаптером (виртуальный)"));
+    step("монитор: события и обмен с адаптером видны в реальном времени", (await text()).includes("Что происходит сейчас") && (await text()).includes("Автомобиль определён") && (await text()).includes("Обмен с виртуальным адаптером"));
     step("монитор: у демо подписано «Демо», а не реальный адаптер", (await text()).includes("Демо") && !(await text()).includes("Реальный адаптер"));
     const radioOk = await js(`(async () => {
       const g = await window.autoflash.radio.get();
@@ -153,7 +157,6 @@ async function run(win, outDir, app) {
       return s2.ok && s2.radios.find((r) => r.kind === "WiFi").state === wifi.state ? "ok" : "set: " + (s2.error || "состояние изменилось");
     })()`);
     step("связь компьютера: состояние Bluetooth и Wi‑Fi читается, переключение отвечает", radioOk === "ok", String(radioOk));
-    step("связь компьютера: переключатели Bluetooth и Wi‑Fi на экране", await waitText("Wi‑Fi компьютера", 30000) && (await text()).includes("Bluetooth компьютера"));
 
     // ── Вкладка «Авто и прошивки» ──
     await goTo("2. Авто и прошивки", "cars");
@@ -334,6 +337,8 @@ async function run(win, outDir, app) {
     step("после отключения зона авто очищена", (await text()).includes("Подключитесь к адаптеру: автомобиль определится сам"));
 
     // ════════ Часть 2: настоящий канал (Wi-Fi/TCP) с STN-адаптером ════════
+    step("режимы: возврат в реальный режим", await click("Реальный режим") && await waitText("Связь компьютера", 30000));
+    step("режимы: переключатели Bluetooth и Wi‑Fi на экране в реальном режиме", await waitText("Wi‑Fi компьютера", 30000) && (await text()).includes("Bluetooth компьютера"));
     await click("Искать снова");
     step("радар: найден Wi‑Fi адаптер в сети", await waitText("Wi‑Fi адаптер 127.0.0.1", 40000));
     await shot("02c-radar-found-adapter");

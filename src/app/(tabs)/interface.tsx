@@ -1,8 +1,8 @@
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
-import { Image, Linking, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { useMemo, useRef, useState } from "react";
+import { Image, Linking, Pressable, ScrollView, Text, View, useWindowDimensions, type ScrollViewInstance } from "react-native";
 import { ALL_CARS, ALL_MAKES, carYears, matchScannedCar, searchCars, type Car } from "../../core/cars";
 import { packagesForCar } from "../../core/firmware";
 import {
@@ -62,6 +62,9 @@ export default function InterfaceDemoScreen() {
   const [photoId, setPhotoId] = useState<string | null>(null);
   const [linkText, setLinkText] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [showUnfit, setShowUnfit] = useState(false);
+  const [showStock, setShowStock] = useState(false);
+  const scrollRef = useRef<ScrollViewInstance>(null);
 
   // Подключённый автомобиль выбираем сам, пока пользователь ничего не выбрал.
   const autoCarId = useMemo(() => {
@@ -136,7 +139,15 @@ export default function InterfaceDemoScreen() {
           {centerMode === "photo" && shownPhoto ? (
             <Image source={{ uri: shownPhoto.url }} style={{ width: "100%", aspectRatio: 800 / 440, borderRadius: 14, backgroundColor: "#0B0F16" }} resizeMode="contain" />
           ) : (
-            <CabinPreview profile={profile} theme={theme} title={theme ? `${theme.name}${selectedFile?.status === "mockup" ? " (макет)" : ""}` : "Стандартный интерфейс"} />
+            <>
+              {theme ? (
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <View style={{ flex: 1 }}><Button title="Как будет" kind={showStock ? "ghost" : "primary"} onPress={() => setShowStock(false)} /></View>
+                  <View style={{ flex: 1 }}><Button title="Как сейчас" kind={showStock ? "primary" : "ghost"} onPress={() => setShowStock(true)} /></View>
+                </View>
+              ) : null}
+              <CabinPreview profile={profile} theme={showStock ? null : theme} title={theme && !showStock ? `${theme.name}${selectedFile?.status === "mockup" ? " (макет)" : ""}` : "Стандартный интерфейс (как сейчас)"} />
+            </>
           )}
 
           <Card>
@@ -222,12 +233,16 @@ export default function InterfaceDemoScreen() {
     return out;
   }, [results]);
 
+  const searchCard = (
+    <Card>
+      <Field label="Поиск автомобиля" value={query} onChangeText={setQuery} placeholder="марка, модель, поколение, год" autoCapitalize="none" />
+      {query ? <Button title="Очистить" kind="ghost" onPress={() => setQuery("")} /> : null}
+    </Card>
+  );
+
   const sidePanel = (
     <View style={{ gap: 10, width: "100%" }}>
-      <Card>
-        <Field label="Поиск автомобиля" value={query} onChangeText={setQuery} placeholder="марка, модель, поколение, год" autoCapitalize="none" />
-        {query ? <Button title="Очистить" kind="ghost" onPress={() => setQuery("")} /> : null}
-      </Card>
+      {wide ? searchCard : null}
 
       {query ? (
         results.length === 0 ? (
@@ -302,9 +317,11 @@ export default function InterfaceDemoScreen() {
           )}
 
           <H2>Файлы интерфейса ({files.filter((f) => f.fits).length} из {files.length} подходят)</H2>
-          {files.map((f) => (
-            <FileCard key={f.fileName} file={f} installed={!!f.packageId && installedIds.has(f.packageId)} selected={themeId === f.theme.id} onSelect={() => { setThemeId(f.theme.id); setCenterMode("scheme"); }} />
+          {[...files].sort((a, b) => Number(b.fits) - Number(a.fits)).filter((f) => f.fits || showUnfit || themeId === f.theme.id).map((f) => (
+            <FileCard key={f.fileName} file={f} installed={!!f.packageId && installedIds.has(f.packageId)} selected={themeId === f.theme.id} onSelect={() => { setThemeId(f.theme.id); setShowStock(false); setCenterMode("scheme"); if (!wide) scrollRef.current?.scrollTo({ y: 0, animated: true }); }} />
           ))}
+
+          {files.some((f) => !f.fits) ? <Button title={showUnfit ? "Скрыть неподходящие файлы" : `Показать неподходящие (${files.filter((f) => !f.fits).length})`} kind="ghost" onPress={() => setShowUnfit((v) => !v)} /> : null}
 
           <H2>Как это ставится у марки {car.make}</H2>
           <Card>
@@ -387,7 +404,8 @@ export default function InterfaceDemoScreen() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}>
+    <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}>
+      {searchCard}
       {centerPanel}
       {sidePanel}
     </ScrollView>

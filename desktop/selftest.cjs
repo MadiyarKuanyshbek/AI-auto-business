@@ -161,7 +161,9 @@ async function run(win, outDir, app) {
 
     // ── Вкладка «Авто и прошивки» ──
     await goTo("2. Авто и прошивки", "cars");
-    step("вкладка «Авто и прошивки» открыта", await waitText("Поиск автомобиля"));
+    step("вкладка «Авто и прошивки» открыта", await waitText("Что вы хотите сделать?"));
+    const tabsText = await text();
+    step("вкладка 2: четыре раздела сверху", ["Что сделать", "Блоки автомобиля", "Поиск моделей", "Библиотека пакетов"].every((t) => tabsText.includes(t)));
     step("вкладка 2: карточки «Что вы хотите сделать?»", (await text()).includes("Что вы хотите сделать?") && (await text()).includes("Русификация") && (await text()).includes("Установка приложений"));
     step("вкладка 2: открытие объяснения русификации", await click("Как это сделать", { nth: 1 }) && await waitText("Что это такое", 4000));
     step("русификация: простое объяснение и шаги для марки", (await text()).includes("✅ Подключено:") && (await text()).includes("перевод интерфейса магнитолы") && (await text()).includes("Как это сделать: Chery") && (await text()).includes("Настройки → Язык"));
@@ -170,6 +172,8 @@ async function run(win, outDir, app) {
     await js("history.back()");
     await sleep(700);
 
+    await click("Блоки автомобиля");
+    await sleep(600);
     const cars = await text();
     step("подключённое авто показано рядом с поиском", cars.includes("Подключённый автомобиль") && cars.includes("VOLKSWAGEN (2011)"));
     step("блок двигателя с семейством Bosch EDC17", cars.includes("Bosch EDC17"));
@@ -177,6 +181,8 @@ async function run(win, outDir, app) {
     await shot("03-cars");
 
     // ── Поиск по моделям ──
+    await click("Поиск моделей");
+    await sleep(600);
     step("поиск: ввод «камри 2019»", await fill("Поиск автомобиля: марка, модель, год", "камри 2019"));
     step("поиск: найдена Toyota Camry XV70", await waitText("Toyota Camry XV70", 4000));
     step("поиск: показано «Прошивок нет» для модели без пакетов", (await text()).includes("Прошивок нет"));
@@ -186,11 +192,17 @@ async function run(win, outDir, app) {
     step("поиск: раскрытие показывает пакет для модели", await waitText("Демо: Stage 1", 3000));
     await shot("04-search");
     step("поиск: пустой результат", await fill("Поиск автомобиля: марка, модель, год", "zzzzqq") && await waitText("Ничего не найдено", 3000));
-    step("поиск: пустой запрос показывает марки", await fill("Поиск автомобиля: марка, модель, год", "") && await waitText("Марки (", 3000));
+    step("поиск: пустой запрос показывает марки", await fill("Поиск автомобиля: марка, модель, год", "") && await waitText("Марки", 3000));
+    const marks0 = await text();
+    step("справочник: сначала китайские марки (Chery, Haval, Geely, Changan, GAC, BYD)", ["Chery", "Haval", "Geely", "Changan", "GAC", "BYD"].every((m) => marks0.includes(m)));
+    await click("Показать все марки", { exact: false });
+    await sleep(500);
     const marks = await text();
     step("справочник: есть Toyota, BMW, Mercedes-Benz, Kia, Lada, Chery", ["Toyota", "BMW", "Mercedes-Benz", "Kia", "Lada", "Chery"].every((m) => marks.includes(m)));
 
     // ── Установка прошивки (по «Bluetooth/UDS»: на виртуальном блоке) ──
+    await click("Блоки автомобиля");
+    await sleep(600);
     step("кнопка установки", await click("Установить в автомобиль"));
     step("экран установки открыт", await waitText("Проверки перед установкой", 6000));
     const inst = await text();
@@ -264,6 +276,8 @@ async function run(win, outDir, app) {
     await click("Минимализм");
     step("вкладка 3: для модели без файла написано «Макет»", await waitText("Макет: файла пока нет", 4000));
     step("вкладка 3: комплектация «Базовая» — аналоговая панель", await click("Базовая") && await waitText("Приборная панель: аналоговая", 4000));
+    await click("Показать неподходящие", { exact: false });
+    await sleep(400);
     step("вкладка 3: тема не подходит базовой комплектации", (await text()).includes("Не подходит"));
     step("вкладка 3: комплектация «Топ» — цветной дисплей в панели", await click("Топ") && await waitText("аналоговые шкалы и цветной дисплей", 4000));
     await shot("13-interface-top");
@@ -309,6 +323,8 @@ async function run(win, outDir, app) {
       await click("2. Авто и прошивки");
       await sleep(900);
     }
+    await click("Библиотека пакетов");
+    await sleep(600);
     { const okb = await click("Создать пакет из своего файла"); step("конструктор: кнопка в библиотеке", okb, okb ? undefined : `${await js("location.pathname")} | ${(await text()).slice(0, 300).replace(/\s+/g, " ")}`); }
     step("конструктор: экран открыт", await waitText("Конструктор пакета прошивки", 4000));
     await click("Создать пакет");
@@ -322,6 +338,8 @@ async function run(win, outDir, app) {
       await click("2. Авто и прошивки");
       await sleep(900);
     }
+    await click("Библиотека пакетов");
+    await sleep(600);
     step("приложения: кнопка в разделе", await click("Приложения и русификация магнитолы (Wi-Fi)"));
     step("приложения: экран открыт, показан автомобиль", await waitText("Приложения и русификация", 4000) && (await text()).includes("Автомобиль:"));
     step("приложения: магнитолу ищет сама и сообщает, что не найдена", await waitText("Магнитола не найдена", 60000));
@@ -367,6 +385,8 @@ async function run(win, outDir, app) {
 
     // Опрос на настоящем канале: пока открыта «Авто и прошивки» с включёнными живыми данными, потом уходим
     await goTo("2. Авто и прошивки", "cars");
+    await click("Блоки автомобиля");
+    await sleep(500);
     await click("Подробная диагностика");
     await click("Показать живые данные");
     await waitText(/Обороты двигателя\s+800/, 15000);
@@ -383,6 +403,8 @@ async function run(win, outDir, app) {
     const real = await text();
     step("после настоящего скана демо-пакеты скрыты", !real.includes("Демо: Stage 1"));
     step("для настоящего авто пакетов нет — так и написано", real.includes("Прошивок для этого блока пока нет"));
+    await click("Поиск моделей");
+    await sleep(500);
     await fill("Поиск автомобиля: марка, модель, год", "golf 2010");
     await waitText("Volkswagen Golf Mk6", 3000);
     step("поиск: у Golf больше нет демо-прошивки", (await text()).includes("Прошивок нет"));
@@ -413,6 +435,8 @@ async function run(win, outDir, app) {
     await js("location.reload()");
     await sleep(3000);
     await goTo("2. Авто и прошивки", "cars");
+    await click("Блоки автомобиля");
+    await sleep(500);
     step("после перезапуска последний автомобиль на месте", await waitText("WVWZZZ1KZBW123456", 6000));
   } catch (e) {
     step("исключение", false, String(e && e.message ? e.message : e));

@@ -12,7 +12,7 @@ import { useStore } from "../../../storage/store";
 import { vehicleTitle } from "../../../storage/model";
 import { Badge, Body, Button, Card, Empty, Field, H1, H2, Muted, Row, Screen, colors } from "../../../ui/kit";
 import { Diagnostics } from "../../../ui/Diagnostics";
-import { DIFFERENCE, TASKS, type TaskKind } from "../../../core/guides";
+import { CHINESE_MAKES, DIFFERENCE, TASKS, type TaskKind } from "../../../core/guides";
 
 const EXAMPLES = ["камри", "bmw x5", "прадо 2019", "golf", "мерседес е класс", "крета"];
 const STATUS_TEXT = { ready: "Готов к установке", demo: "Демо" } as const;
@@ -24,6 +24,8 @@ export default function CarsScreen() {
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [showDiag, setShowDiag] = useState(false);
+  const [section, setSection] = useState<"tasks" | "blocks" | "search" | "library">("tasks");
+  const [allMakes, setAllMakes] = useState(false);
   const [libMessage, setLibMessage] = useState<string | null>(null);
 
   const results = useMemo(() => searchCars(query), [query]);
@@ -48,8 +50,20 @@ export default function CarsScreen() {
   return (
     <Screen>
       <H1>Авто и прошивки</H1>
-      <Muted>Выберите, что хотите сделать. У каждого пункта есть простое объяснение и шаги для вашей марки.</Muted>
+      <Card tone={connected ? "good" : undefined}>
+        <Body style={{ fontWeight: "700" }}>{connected && scan ? `✅ Подключено: ${vehicleTitle(scan)}` : "Автомобиль не подключён"}</Body>
+        {!connected ? <Button title="Подключиться к автомобилю" kind="ghost" onPress={() => router.push("/")} /> : null}
+      </Card>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        {([["tasks", "Что сделать"], ["blocks", "Блоки автомобиля"], ["search", "Поиск моделей"], ["library", "Библиотека пакетов"]] as const).map(([key, label]) => (
+          <Pressable key={key} testID={`section-${key}`} onPress={() => setSection(key)} style={{ flexGrow: 1, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, alignItems: "center", backgroundColor: section === key ? colors.accent : colors.card, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.text, fontWeight: "700" }}>{label}</Text>
+          </Pressable>
+        ))}
+      </View>
 
+      {section === "tasks" ? (
+        <>
       <H2>Что вы хотите сделать?</H2>
       {(["firmware", "russify", "apps"] as TaskKind[]).map((k) => {
         const t = TASKS[k];
@@ -68,6 +82,11 @@ export default function CarsScreen() {
         ))}
       </Card>
 
+        </>
+      ) : null}
+
+      {section === "blocks" ? (
+        <>
       <H2>Подключённый автомобиль</H2>
       {!scan ? (
         <Card>
@@ -124,6 +143,11 @@ export default function CarsScreen() {
         </>
       )}
 
+        </>
+      ) : null}
+
+      {section === "search" ? (
+        <>
       <H2>Поиск по моделям</H2>
 
       <Card>
@@ -151,18 +175,24 @@ export default function CarsScreen() {
         </>
       ) : (
         <>
-          <H2>Марки ({ALL_MAKES.length})</H2>
+          <H2>Марки</H2>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {[...ALL_MAKES].sort().map((m) => (
+            {[...ALL_MAKES].sort((a, b) => Number(!CHINESE_MAKES.includes(a as never)) - Number(!CHINESE_MAKES.includes(b as never)) || a.localeCompare(b)).filter((m) => allMakes || CHINESE_MAKES.includes(m as never)).map((m) => (
               <Pressable key={m} onPress={() => setQuery(m)} style={{ paddingVertical: 7, paddingHorizontal: 12, borderRadius: 10, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
                 <Text style={{ color: colors.text, fontWeight: "600" }}>{m}</Text>
               </Pressable>
             ))}
           </View>
+          <Button title={allMakes ? "Только китайские марки" : `Показать все марки (${ALL_MAKES.length})`} kind="ghost" onPress={() => setAllMakes((v) => !v)} />
           <Muted>Справочник собран вручную и может быть неполным; прошивки для моделей появятся в списке, как только будут добавлены пакеты.</Muted>
         </>
       )}
 
+        </>
+      ) : null}
+
+      {section === "library" ? (
+        <>
       <H2>Библиотека пакетов прошивки</H2>
       <Card>
         <Muted>Пакет (.afpkg / .json) содержит прошивку и инструкцию по установке в блок. Загруженные пакеты используются при подключении к авто: приложение само предложит установку или обновление.</Muted>
@@ -178,6 +208,9 @@ export default function CarsScreen() {
         ))}
         {userPackages.length === 0 ? <Muted>Своих пакетов пока нет.</Muted> : null}
       </Card>
+        </>
+      ) : null}
+
     </Screen>
   );
 }

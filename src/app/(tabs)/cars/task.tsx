@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { CHINESE_MAKES, DIFFERENCE, TASKS, planFor, type TaskKind } from "../../../core/guides";
 import { useSession } from "../../../session";
+import { vehicleTitle } from "../../../storage/model";
 import { Badge, Body, Button, Card, H2, Muted, Screen, colors } from "../../../ui/kit";
 
 const RISK_TONE = { low: "good", medium: "warn", high: "bad" } as const;
@@ -12,7 +13,9 @@ const RISK_TEXT = { low: "Риск: низкий", medium: "Риск: средн
 export default function TaskScreen() {
   const router = useRouter();
   const { kind } = useLocalSearchParams<{ kind?: string }>();
-  const { liveScan } = useSession();
+  const { liveScan, connection } = useSession();
+  const carTitle = liveScan ? vehicleTitle(liveScan) : null;
+  const isConnected = connection.status === "ready";
   const k: TaskKind = kind === "russify" || kind === "apps" ? kind : "firmware";
   const guide = TASKS[k];
 
@@ -31,6 +34,18 @@ export default function TaskScreen() {
   return (
     <Screen>
       <H2>{`${guide.icon} ${guide.title}`}</H2>
+      {isConnected ? (
+        <Card tone="good">
+          <Body style={{ fontWeight: "800" }}>✅ Подключено: {carTitle ?? connection.label}</Body>
+          <Muted>Автомобиль подключён {connection.kind === "demo" ? "(демо)" : ""}. Ниже шаги для этой машины.</Muted>
+        </Card>
+      ) : (
+        <Card tone="warn">
+          <Body style={{ fontWeight: "800" }}>Автомобиль не подключён</Body>
+          <Muted>Сначала подключитесь на вкладке «Подключение»: после подключения здесь появится название машины.</Muted>
+          <Button title="Подключиться к автомобилю" onPress={() => router.push("/")} />
+        </Card>
+      )}
       <Card>
         <Body style={{ fontWeight: "700" }}>Что это такое</Body>
         {guide.what.map((t) => (

@@ -193,9 +193,10 @@ export default function ConnectScreen() {
     };
     if (b.connected) {
       return [
-        { title: "Прошивки и обновления", hint: "Блоки автомобиля и доступные пакеты", onPress: go("/cars") },
-        { title: "Интерфейс и экраны", hint: "Как будет выглядеть салон, файлы интерфейса", kind: "ghost", onPress: go("/interface") },
-        { title: "Приложения и русификация", hint: "Установка приложений на магнитолу по Wi‑Fi", kind: "ghost", onPress: go("/cars/apps") },
+        { title: "Прошивка блоков", hint: "Обновить программу в блоках этого автомобиля", onPress: go("/cars/task", { kind: "firmware" }) },
+        { title: "Русификация", hint: "Сделать интерфейс магнитолы на русском", kind: "ghost", onPress: go("/cars/task", { kind: "russify" }) },
+        { title: "Установка приложений", hint: "Навигатор, музыка, видео на магнитоле", kind: "ghost", onPress: go("/cars/task", { kind: "apps" }) },
+        { title: "Интерфейс и экраны", hint: "Как будет выглядеть салон", kind: "ghost", onPress: go("/interface") },
         { title: "Отключиться", kind: "ghost", onPress: () => { setSheet(null); void session.disconnect(); } },
       ];
     }
@@ -214,6 +215,8 @@ export default function ConnectScreen() {
   return (
     <Screen>
       <H1>AutoFlash</H1>
+      {ready ? <ConnectedHero onGo={(path, params) => router.push({ pathname: path as never, params } as never)} /> : null}
+
       {settings.showDemo && !ready ? (
         <View style={{ flexDirection: "row", gap: 8 }}>
           {([["real", "Реальный режим"], ["demo", "Демо-режим"]] as const).map(([key, label]) => (
@@ -254,7 +257,7 @@ export default function ConnectScreen() {
       {view === "real" ? <RadioPanel active={focused} /> : null}
       <ActionSheet
         visible={!!sheet}
-        title={sheet?.label ?? ""}
+        title={sheet?.connected ? `✅ Подключено: ${sheet.label}` : sheet?.label ?? ""}
         subtitle={sheet?.connected ? "Подключено. Что сделать?" : sheet?.sub}
         actions={sheet ? sheetActions(sheet) : []}
         onClose={() => setSheet(null)}
@@ -422,6 +425,37 @@ function VehicleZone({ onOpen }: { onOpen: () => void }) {
         </>
       ) : null}
       <Button title="Открыть авто и прошивки" onPress={onOpen} />
+    </Card>
+  );
+}
+
+/** Крупный блок после подключения: подключение удалось, в какую машину и что можно установить. */
+function ConnectedHero({ onGo }: { onGo: (path: string, params?: Record<string, string>) => void }) {
+  const { connection, liveScan, scanning, progress } = useSession();
+  if (connection.status !== "ready") return null;
+  const demo = connection.kind === "demo";
+  const title = liveScan ? vehicleTitle(liveScan) : null;
+  return (
+    <Card tone="good">
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+        <Body style={{ fontWeight: "800", fontSize: 18, flex: 1 }}>✅ Подключение удалось</Body>
+        <Badge tone={demo ? "warn" : "good"} text={demo ? "Демо" : "Реальный адаптер"} />
+      </View>
+      <Muted>Подключено через: {connection.label}</Muted>
+      {title ? (
+        <>
+          <Body style={{ fontSize: 17, fontWeight: "700" }}>Автомобиль: {title}</Body>
+          <Body style={{ fontWeight: "700" }}>Что установить в эту машину?</Body>
+          <Button title="🔧 Прошивка блоков" onPress={() => onGo("/cars/task", { kind: "firmware" })} />
+          <Button title="🇷🇺 Русификация" kind="ghost" onPress={() => onGo("/cars/task", { kind: "russify" })} />
+          <Button title="📱 Установка приложений" kind="ghost" onPress={() => onGo("/cars/task", { kind: "apps" })} />
+        </>
+      ) : (
+        <>
+          <Body>Определяю автомобиль…</Body>
+          <Progress fraction={progress?.fraction ?? 0.05} label={progress?.step ?? (scanning ? "Идёт определение" : "Ожидание")} />
+        </>
+      )}
     </Card>
   );
 }

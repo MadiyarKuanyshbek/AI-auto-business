@@ -143,9 +143,10 @@ async function run(win, outDir, app) {
     step("зона показывает чип адаптера и возможность прошивки", zone.includes("STN2120") && zone.includes("Прошивка возможна"));
     step("зона показывает шину и напряжение", zone.includes("CAN 11 бит") && /12\.7\s*В/.test(zone));
     await shot("02-connected-zone");
-    step("после подключения само предлагается выбор: что установить", await waitText("Подключено. Что сделать?", 8000) && (await text()).includes("Приложения и русификация") && (await text()).includes("Интерфейс и экраны") && (await text()).includes("Прошивки и обновления"));
+    step("после подключения само предлагается выбор: что установить", await waitText("Подключено. Что сделать?", 8000) && (await text()).includes("Прошивка блоков") && (await text()).includes("Русификация") && (await text()).includes("Установка приложений") && (await text()).includes("Интерфейс и экраны"));
     await shot("02b-car-actions");
     await closeSheet();
+    step("после подключения сверху крупно: «Подключение удалось», машина и что установить", (await text()).includes("✅ Подключение удалось") && (await text()).includes("Что установить в эту машину?") && (await text()).includes("Автомобиль: VOLKSWAGEN"));
     step("монитор: события и обмен с адаптером видны в реальном времени", (await text()).includes("Что происходит сейчас") && (await text()).includes("Автомобиль определён") && (await text()).includes("Обмен с виртуальным адаптером"));
     step("монитор: у демо подписано «Демо», а не реальный адаптер", (await text()).includes("Демо") && !(await text()).includes("Реальный адаптер"));
     const radioOk = await js(`(async () => {
@@ -163,7 +164,7 @@ async function run(win, outDir, app) {
     step("вкладка «Авто и прошивки» открыта", await waitText("Поиск автомобиля"));
     step("вкладка 2: карточки «Что вы хотите сделать?»", (await text()).includes("Что вы хотите сделать?") && (await text()).includes("Русификация") && (await text()).includes("Установка приложений"));
     step("вкладка 2: открытие объяснения русификации", await click("Как это сделать", { nth: 1 }) && await waitText("Что это такое", 4000));
-    step("русификация: простое объяснение и шаги для марки", (await text()).includes("перевод интерфейса магнитолы") && (await text()).includes("Как это сделать: Chery") && (await text()).includes("Настройки → Язык"));
+    step("русификация: простое объяснение и шаги для марки", (await text()).includes("✅ Подключено:") && (await text()).includes("перевод интерфейса магнитолы") && (await text()).includes("Как это сделать: Chery") && (await text()).includes("Настройки → Язык"));
     step("русификация: выбор другой марки меняет шаги", await click("Haval") && await waitText("Как это сделать: Haval", 3000));
     await shot("03b-task-russify");
     await js("history.back()");
@@ -322,14 +323,16 @@ async function run(win, outDir, app) {
       await sleep(900);
     }
     step("приложения: кнопка в разделе", await click("Приложения и русификация магнитолы (Wi-Fi)"));
-    step("приложения: экран открыт", await waitText("Установка приложений и русификация", 4000));
-    step("приложения: рекомендованные приложения и подсказка по языку", (await text()).includes("Яндекс Навигатор") && (await text()).includes("Настройки → Система → Язык"));
+    step("приложения: экран открыт, показан автомобиль", await waitText("Приложения и русификация", 4000) && (await text()).includes("Автомобиль:"));
+    step("приложения: магнитолу ищет сама и сообщает, что не найдена", await waitText("Магнитола не найдена", 60000));
+    step("приложения: рекомендованные приложения", (await text()).includes("Яндекс Навигатор"));
+    step("приложения: ввод адреса вручную", await click("Ввести адрес вручную"));
     step("приложения: поле адреса", await fill("Адрес магнитолы", "abc"));
     await click("Подключиться");
     step("приложения: неверный адрес объясняется", await waitText("Введите адрес вида", 3000));
     step("приложения: поле адреса 2", await fill("Адрес магнитолы", "127.0.0.1:1"));
     await click("Подключиться");
-    step("приложения: adb.exe запущен, отказ магнитолы объяснён", await waitText("Магнитола", 40000) && !(await text()).includes("Не найден adb.exe"));
+    step("приложения: adb.exe запущен, отказ магнитолы объяснён", await waitText(/отказала в подключении|не отвечает/, 60000) && !(await text()).includes("Не найден adb.exe"));
     await js("history.back()");
     await sleep(600);
 

@@ -157,7 +157,12 @@ export default function InterfaceDemoScreen() {
                         if (pkg && ecu) router.push({ pathname: "/cars/install", params: { pkg: pkg.id, version: pkg.version, ecu: ecu.txId } });
                       }}
                     />
-                    {!connectedMatches ? <Muted>Для установки подключитесь к этому автомобилю.</Muted> : null}
+                    {!connectedMatches ? (
+                      <>
+                        <Muted>Для установки подключитесь к этому автомобилю.</Muted>
+                        <Button title="Перейти к подключению" kind="ghost" onPress={() => router.push("/")} />
+                      </>
+                    ) : null}
                   </>
                 ) : (
                   <>

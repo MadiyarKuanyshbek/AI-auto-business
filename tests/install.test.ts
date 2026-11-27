@@ -139,3 +139,23 @@ describe("installing a package over the adapter", () => {
     expect(sha256Hex(await readBackup(req.elm, req.ecu, req.pkg))).toBe(original);
   });
 });
+
+describe("демо-установка для других виртуальных машин", () => {
+  it("ставит пакеты в блок двигателя BMW и Camry и блок сообщает новый номер ПО", async () => {
+    const { DEMO_PACKAGE_BMW, DEMO_PACKAGE_CAMRY } = await import("../src/core/sim/demoPackage");
+    for (const [index, pkg] of [[1, DEMO_PACKAGE_BMW], [2, DEMO_PACKAGE_CAMRY]] as const) {
+      const elm = new Elm327(new SimulatedAdapter(structuredClone(DEMO_VEHICLES[index])));
+      await elm.open();
+      const scan = await scanVehicle(elm, { online: false });
+      const ecu = scan.ecus[0];
+      const parsed = parsePackage(pkg);
+      if (!parsed.ok) throw new Error(parsed.error);
+      const backup = await readBackup(elm, ecu, pkg).catch(() => null);
+      const req: InstallRequest = { elm, scan, ecu, pkg, segments: parsed.segments, transportKind: "demo", voltage: 13.8, backup, ack: { customerConsent: true, legalNotice: true, offRoad: false, wirelessRisk: true } };
+      expect(installChecks(req).every((c) => c.ok || !c.blocking)).toBe(true);
+      const result = await installPackage(req, () => undefined);
+      expect(result.status).toBe("success");
+      expect(result.status === "success" && result.newSoftware).toBe(pkg.expectedSoftwareNumber);
+    }
+  });
+});

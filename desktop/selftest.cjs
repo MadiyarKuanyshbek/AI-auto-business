@@ -172,6 +172,18 @@ async function run(win, outDir, app) {
     await js("history.back()");
     await sleep(700);
 
+    // Демо: виртуальная магнитола, чтобы можно было пройти русификацию и установку приложений
+    step("демо-магнитола: задача «Установка приложений»", await click("Как это сделать", { nth: 2 }) && await waitText("Что это такое", 4000));
+    step("демо-магнитола: кнопка к установке приложений", await click("Установить приложения (Wi‑Fi)"));
+    step("демо-магнитола: виртуальная магнитола подключена", await waitText("ДЕМО: виртуальная магнитола", 4000) && (await text()).includes("Подключение удалось: виртуальная магнитола"));
+    step("демо-магнитола: русификация работает", await click("Выбрать русский язык") && await waitText("Интерфейс магнитолы теперь на русском", 3000));
+    step("демо-магнитола: установка приложения работает", await click("Установить Яндекс Навигатор") && await waitText("Установлено", 3000));
+    await shot("03c-demo-headunit");
+    await js("history.back()");
+    await sleep(600);
+    await js("history.back()");
+    await sleep(700);
+
     await click("Блоки автомобиля");
     await sleep(600);
     const cars = await text();
@@ -183,8 +195,8 @@ async function run(win, outDir, app) {
     // ── Поиск по моделям ──
     await click("Поиск моделей");
     await sleep(600);
-    step("поиск: ввод «камри 2019»", await fill("Поиск автомобиля: марка, модель, год", "камри 2019"));
-    step("поиск: найдена Toyota Camry XV70", await waitText("Toyota Camry XV70", 4000));
+    step("поиск: ввод «камри 2019»", await fill("Поиск автомобиля: марка, модель, год", "королла 2019"));
+    step("поиск: найдена Toyota Corolla E210", await waitText("Toyota Corolla E210", 4000));
     step("поиск: показано «Прошивок нет» для модели без пакетов", (await text()).includes("Прошивок нет"));
     step("поиск: очистка", await fill("Поиск автомобиля: марка, модель, год", "golf 2010"));
     step("поиск: Golf Mk6 найден и для него есть прошивка", (await waitText("Volkswagen Golf Mk6", 4000)) && (await text()).includes("Прошивок: "));
@@ -309,7 +321,7 @@ async function run(win, outDir, app) {
     step("вкладка 3: найдено поколение XV70 в группе Toyota / Camry", await waitText("XV70", 4000) && (await text()).includes("Toyota"));
     step("вкладка 3: выбор поколения", await click("XV70"));
     step("вкладка 3: салон Toyota Camry XV70", await waitText("Toyota Camry XV70", 4000));
-    step("вкладка 3: для Camry файлов интерфейса — макеты, прошивок блоков нет", (await text()).includes("Файлов прошивок двигателя и коробки для этой модели пока нет"));
+    step("вкладка 3: для Camry файлы интерфейса — макеты, для блока двигателя есть демо-пакет", (await text()).includes("Демо: обновление блока двигателя Toyota Camry"));
     await shot("15-interface-camry");
     step("вкладка 3: описан способ установки для марки", (await text()).includes("Как это ставится у марки Toyota"));
     step("очередь: выбор файла интерфейса", await click("Спорт: красный тахометр"));
@@ -329,28 +341,6 @@ async function run(win, outDir, app) {
     step("конструктор: экран открыт", await waitText("Конструктор пакета прошивки", 4000));
     await click("Создать пакет");
     step("конструктор: пустая форма не принимается и объясняет почему", await waitText("Укажите название пакета", 3000));
-    await js("history.back()");
-    await sleep(600);
-
-    // Приложения и русификация (ADB по Wi-Fi)
-    if (!(await text()).includes("Библиотека пакетов прошивки")) {
-      await goTo("2. Авто и прошивки", "cars");
-      await click("2. Авто и прошивки");
-      await sleep(900);
-    }
-    await click("Библиотека пакетов");
-    await sleep(600);
-    step("приложения: кнопка в разделе", await click("Приложения и русификация магнитолы (Wi-Fi)"));
-    step("приложения: экран открыт, показан автомобиль", await waitText("Приложения и русификация", 4000) && (await text()).includes("Автомобиль:"));
-    step("приложения: магнитолу ищет сама и сообщает, что не найдена", await waitText("Магнитола не найдена", 60000));
-    step("приложения: рекомендованные приложения", (await text()).includes("Яндекс Навигатор"));
-    step("приложения: ввод адреса вручную", await click("Ввести адрес вручную"));
-    step("приложения: поле адреса", await fill("Адрес магнитолы", "abc"));
-    await click("Подключиться");
-    step("приложения: неверный адрес объясняется", await waitText("Введите адрес вида", 3000));
-    step("приложения: поле адреса 2", await fill("Адрес магнитолы", "127.0.0.1:1"));
-    await click("Подключиться");
-    step("приложения: adb.exe запущен, отказ магнитолы объяснён", await waitText(/отказала в подключении|не отвечает/, 60000) && !(await text()).includes("Не найден adb.exe"));
     await js("history.back()");
     await sleep(600);
 
@@ -397,8 +387,33 @@ async function run(win, outDir, app) {
     const rx2 = await js("window.__rx");
     step("TCP: вне экрана «Авто» адаптер не опрашивается", rx2 === rx1, `${rx1} → ${rx2}`);
 
+    // Приложения и русификация (ADB по Wi-Fi)
+    if (!(await text()).includes("Библиотека пакетов прошивки")) {
+      await goTo("2. Авто и прошивки", "cars");
+      await click("2. Авто и прошивки");
+      await sleep(900);
+    }
+    await click("Библиотека пакетов");
+    await sleep(600);
+    step("приложения: кнопка в разделе", await click("Приложения и русификация магнитолы (Wi-Fi)"));
+    step("приложения: экран открыт, показан автомобиль", await waitText("Приложения и русификация", 4000) && (await text()).includes("Автомобиль:"));
+    step("приложения: магнитолу ищет сама и сообщает, что не найдена", await waitText("Магнитола не найдена", 60000));
+    step("приложения: рекомендованные приложения", (await text()).includes("Яндекс Навигатор"));
+    step("приложения: ввод адреса вручную", await click("Ввести адрес вручную"));
+    step("приложения: поле адреса", await fill("Адрес магнитолы", "abc"));
+    await click("Подключиться");
+    step("приложения: неверный адрес объясняется", await waitText("Введите адрес вида", 3000));
+    step("приложения: поле адреса 2", await fill("Адрес магнитолы", "127.0.0.1:1"));
+    await click("Подключиться");
+    step("приложения: adb.exe запущен, отказ магнитолы объяснён", await waitText(/отказала в подключении|не отвечает/, 60000) && !(await text()).includes("Не найден adb.exe"));
+    await js("history.back()");
+    await sleep(600);
+
+
     // Демо-пакет на настоящем канале должен быть недоступен: после первого настоящего скана демо скрыто.
     await goTo("2. Авто и прошивки", "cars");
+    await sleep(500);
+    await click("Блоки автомобиля");
     await sleep(500);
     const real = await text();
     step("после настоящего скана демо-пакеты скрыты", !real.includes("Демо: Stage 1"));

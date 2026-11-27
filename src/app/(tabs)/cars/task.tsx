@@ -26,7 +26,7 @@ export default function TaskScreen() {
 
   const action =
     k === "firmware"
-      ? { title: "Открыть блоки и пакеты прошивки", go: () => router.push("/cars") }
+      ? { title: "Открыть блоки и пакеты прошивки", go: () => router.push({ pathname: "/cars", params: { section: "blocks" } }) }
       : k === "russify"
         ? { title: "Открыть выбор языка на магнитоле (Wi‑Fi)", go: () => router.push("/cars/apps") }
         : { title: "Установить приложения (Wi‑Fi)", go: () => router.push("/cars/apps") };

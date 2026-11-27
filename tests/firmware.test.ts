@@ -14,9 +14,11 @@ describe("firmware lookup by car model", () => {
     const golf6 = searchCars("golf 2010").find((c) => /Golf Mk6/.test(c.model))!;
     const entries = firmwareForCar(golf6, pk);
     expect(entries.some((e) => e.kind === "package" && e.version === "1.1.0")).toBe(true); // последняя версия
+    const corolla = ALL_CARS.find((c) => /Corolla E210/.test(c.model))!;
+    expect(firmwareForCar(corolla, pk).filter((e) => e.kind === "package")).toEqual([]);
+    expect(firmwareForCar(corolla, [])).toEqual([]);
     const camry = ALL_CARS.find((c) => /Camry XV70/.test(c.model))!;
-    expect(firmwareForCar(camry, pk).filter((e) => e.kind === "package")).toEqual([]);
-    expect(firmwareForCar(camry, [])).toEqual([]);
+    expect(firmwareForCar(camry, pk).some((e) => e.kind === "package")).toBe(true);
   });
   it("does not match the package to a Golf outside its years", () => {
     const golf8 = ALL_CARS.find((c) => /Golf Mk8/.test(c.model))!;
@@ -45,9 +47,18 @@ describe("install / update state for a scanned ECU", () => {
     expect(s[0].state).toBe("current");
   });
   it("offers nothing for a different car", async () => {
-    const elm = new Elm327(new SimulatedAdapter(structuredClone(DEMO_VEHICLES[1])));
+    const elm = new Elm327(new SimulatedAdapter(structuredClone(DEMO_VEHICLES[3])));
     await elm.open();
     const scan = await scanVehicle(elm, { online: false });
     expect(packagesForEcu(scan.ecus[0], scan.vin, pk, [])).toEqual([]);
+  });
+  it("offers the demo packages for the BMW and Camry virtual engines", async () => {
+    for (const [index, id] of [[1, "demo-bmw-f30-engine"], [2, "demo-camry-xv70-engine"]] as const) {
+      const elm = new Elm327(new SimulatedAdapter(structuredClone(DEMO_VEHICLES[index])));
+      await elm.open();
+      const scan = await scanVehicle(elm, { online: false });
+      const states = packagesForEcu(scan.ecus[0], scan.vin, pk, []);
+      expect(states.map((s) => s.pkg.id)).toEqual([id]);
+    }
   });
 });

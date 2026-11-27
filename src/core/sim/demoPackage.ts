@@ -75,4 +75,45 @@ export const DEMO_PACKAGE_CLUSTER: FirmwarePackage = buildPackage({
   demo: true,
 });
 
-export const DEMO_PACKAGES: FirmwarePackage[] = [DEMO_PACKAGE_V1, DEMO_PACKAGE_V1_1, DEMO_PACKAGE_CLUSTER];
+const DATA_BMW = Uint8Array.from({ length: 8192 }, (_, i) => (i * 5 + 41) & 0xff);
+const DATA_CAMRY = Uint8Array.from({ length: 8192 }, (_, i) => (i * 3 + 29) & 0xff);
+
+/** Демо-пакет для виртуального блока двигателя BMW 320d F30. */
+export const DEMO_PACKAGE_BMW: FirmwarePackage = buildPackage({
+  id: "demo-bmw-f30-engine",
+  version: "1.0.0",
+  title: "Демо: обновление блока двигателя BMW 320d",
+  description: "Пример пакета для виртуального блока двигателя: показывает установку и проверку результата. Данные ненастоящие.",
+  target: { softwareNumbers: ["1037560226"], txId: "7E0", vehicles: [{ make: "BMW", model: "3 Series", from: 2011, to: 2019 }] },
+  expectedSoftwareNumber: `1037560226-${sha256Hex(DATA_BMW).slice(0, 4).toUpperCase()}`,
+  procedure: {
+    ...procedure,
+    security: { level: 0x11, algorithm: "demo-xor-add", params: { maskHex: "6C" } },
+    backup: { address: 0x90000, length: 8192, chunk: 1024 },
+  },
+  segments: [{ address: 0x90000, data: DATA_BMW }],
+  roadLegal: true,
+  category: "engine",
+  demo: true,
+});
+
+/** Демо-пакет для виртуального блока двигателя Toyota Camry XV70. */
+export const DEMO_PACKAGE_CAMRY: FirmwarePackage = buildPackage({
+  id: "demo-camry-xv70-engine",
+  version: "1.0.0",
+  title: "Демо: обновление блока двигателя Toyota Camry",
+  description: "Пример пакета для виртуального блока двигателя: показывает установку и проверку результата. Данные ненастоящие.",
+  target: { softwareNumbers: ["8966306B50"], txId: "7E0", vehicles: [{ make: "Toyota", model: "Camry", from: 2017 }] },
+  expectedSoftwareNumber: `8966306B50-${sha256Hex(DATA_CAMRY).slice(0, 4).toUpperCase()}`,
+  procedure: {
+    ...procedure,
+    security: { level: 0x11, algorithm: "demo-xor-add", params: { maskHex: "4D" } },
+    backup: { address: 0xa0000, length: 8192, chunk: 1024 },
+  },
+  segments: [{ address: 0xa0000, data: DATA_CAMRY }],
+  roadLegal: true,
+  category: "engine",
+  demo: true,
+});
+
+export const DEMO_PACKAGES: FirmwarePackage[] = [DEMO_PACKAGE_V1, DEMO_PACKAGE_V1_1, DEMO_PACKAGE_CLUSTER, DEMO_PACKAGE_BMW, DEMO_PACKAGE_CAMRY];

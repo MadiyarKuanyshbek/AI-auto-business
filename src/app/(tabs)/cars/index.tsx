@@ -1,7 +1,7 @@
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
-import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { ALL_MAKES, carYears, searchCars, type Car } from "../../../core/cars";
 import { identifyFamily } from "../../../core/catalog";
@@ -26,6 +26,13 @@ export default function CarsScreen() {
   const [showDiag, setShowDiag] = useState(false);
   const [section, setSection] = useState<"tasks" | "blocks" | "search" | "library">("tasks");
   const [allMakes, setAllMakes] = useState(false);
+  const sectionParam = useLocalSearchParams<{ section?: string }>().section;
+  // Переход с других экранов может сразу открыть нужный раздел (например, «Блоки автомобиля»).
+  useEffect(() => {
+    if (sectionParam !== "blocks" && sectionParam !== "search" && sectionParam !== "library" && sectionParam !== "tasks") return;
+    const t = setTimeout(() => setSection(sectionParam), 0);
+    return () => clearTimeout(t);
+  }, [sectionParam]);
   const [libMessage, setLibMessage] = useState<string | null>(null);
 
   const results = useMemo(() => searchCars(query), [query]);
@@ -105,6 +112,13 @@ export default function CarsScreen() {
             <Row label="Модельный год" value={resolveModelYear(scan.vinInfo, scan.vinOnline)} />
             <Row label="Подключение" value={connected ? connection.label : "адаптер не подключён"} />
           </Card>
+
+          {connected && scan.ecus.every((ecu) => packagesForEcu(ecu, scan.vin, packages, installs).length === 0) ? (
+            <Card tone="warn">
+              <Body style={{ fontWeight: "700" }}>Для этой машины готовых пакетов прошивки нет</Body>
+              <Muted>Установить нечего: в библиотеке нет файла под блоки этого автомобиля. В демо пакеты есть для Volkswagen Golf 6, BMW 320d F30 и Toyota Camry XV70. Свой файл можно добавить в разделе «Библиотека пакетов».</Muted>
+            </Card>
+          ) : null}
 
           {scan.ecus.map((ecu) => {
             const states = packagesForEcu(ecu, scan.vin, packages, installs);

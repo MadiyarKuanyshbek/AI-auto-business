@@ -107,7 +107,7 @@ export default function AppsScreen() {
   const started = useRef<string | null>(null);
   useEffect(() => {
     const key = `${params.address ?? ""}|${params.action ?? ""}`;
-    if (!bridge || started.current === key) return;
+    if (!bridge || demo || started.current === key) return;
     started.current = key;
     const t = setTimeout(() => {
       void refresh();
@@ -115,7 +115,7 @@ export default function AppsScreen() {
       else void findHeadUnits(true);
     }, 150);
     return () => clearTimeout(t);
-  }, [bridge, params.address, params.action, refresh, connectTo, findHeadUnits]);
+  }, [bridge, demo, params.address, params.action, refresh, connectTo, findHeadUnits]);
 
   async function pick() {
     if (!bridge) return;
@@ -145,6 +145,9 @@ export default function AppsScreen() {
     if (!r.ok) setMessage({ ok: false, text: explainAdbError(r.out) });
     await loadPackages(serial);
   }
+
+  // Демо-режим: виртуальная магнитола, чтобы можно было пройти весь путь без настоящего устройства.
+  if (demo) return <DemoHeadUnit carTitle={carTitle} />;
 
   if (!bridge) {
     return (
@@ -246,6 +249,83 @@ export default function AppsScreen() {
             <Pressable onPress={() => void Linking.openURL(a.url)}>
               <Text style={{ color: colors.accent, fontSize: 13 }}>Официальная страница</Text>
             </Pressable>
+          </View>
+        ))}
+      </Card>
+
+      {log.length > 0 ? (
+        <Card>
+          <Body style={{ fontWeight: "700" }}>Журнал</Body>
+          {log.map((l, i) => (
+            <Muted key={`${i}-${l}`}>{l}</Muted>
+          ))}
+        </Card>
+      ) : null}
+    </Screen>
+  );
+}
+
+/** Виртуальная магнитола для демо: русификация и установка приложений ничего реального не меняют. */
+function DemoHeadUnit({ carTitle }: { carTitle: string | null }) {
+  const [language, setLanguage] = useState("English");
+  const [installed, setInstalled] = useState<string[]>([]);
+  const [log, setLog] = useState<string[]>([]);
+  const stamp = () => new Date().toLocaleTimeString("ru-RU");
+
+  function setRussian() {
+    setLanguage("Русский");
+    setLog((l) => [`${stamp()} Язык магнитолы: Русский`, ...l]);
+    logEvent("Демо: на виртуальной магнитоле выбран русский язык", false);
+  }
+  function install(name: string) {
+    if (installed.includes(name)) return;
+    setInstalled((l) => [...l, name]);
+    setLog((l) => [`${stamp()} Установлено: ${name}`, ...l]);
+    logEvent(`Демо: на виртуальной магнитоле установлено ${name}`, false);
+  }
+  function remove(name: string) {
+    setInstalled((l) => l.filter((x) => x !== name));
+    setLog((l) => [`${stamp()} Удалено: ${name}`, ...l]);
+  }
+
+  return (
+    <Screen>
+      <H2>Приложения и русификация</H2>
+      <Card tone="warn">
+        <Body style={{ fontWeight: "800" }}>ДЕМО: виртуальная магнитола</Body>
+        <Muted>Здесь можно пройти весь путь: сменить язык и установить приложения. Ничего реального не происходит, магнитолы нет.</Muted>
+        <Muted>Автомобиль: {carTitle ?? "не выбран"}</Muted>
+      </Card>
+
+      <Card tone="good">
+        <Body style={{ fontWeight: "800" }}>✅ Подключение удалось: виртуальная магнитола</Body>
+        <Muted>Язык сейчас: {language}</Muted>
+      </Card>
+
+      <H2>Что установить в этот автомобиль</H2>
+      <Card>
+        <Body style={{ fontWeight: "700" }}>🇷🇺 Русификация</Body>
+        <Muted>На настоящей магнитоле приложение откроет выбор языка. Здесь можно попробовать результат.</Muted>
+        <Button title={language === "Русский" ? "Русский язык выбран" : "Выбрать русский язык"} disabled={language === "Русский"} onPress={setRussian} />
+        {language === "Русский" ? <Badge tone="good" text="Интерфейс магнитолы теперь на русском" /> : null}
+      </Card>
+
+      <Card>
+        <Body style={{ fontWeight: "700" }}>📱 Приложения</Body>
+        {RECOMMENDED_APPS.map((a) => (
+          <View key={a.name} style={{ gap: 4, paddingVertical: 4 }}>
+            <Body style={{ fontWeight: "600" }}>{a.name}</Body>
+            <Muted>{a.purpose}</Muted>
+            {installed.includes(a.name) ? (
+              <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+                <Badge tone="good" text="Установлено" />
+                <Pressable onPress={() => remove(a.name)}>
+                  <Text style={{ color: colors.bad, fontSize: 13 }}>Удалить</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Button title={`Установить ${a.name}`} onPress={() => install(a.name)} />
+            )}
           </View>
         ))}
       </Card>

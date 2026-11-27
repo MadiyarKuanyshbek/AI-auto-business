@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Animated, Easing, Pressable, Text, View } from "react-native";
+import { Animated, Easing, Pressable, Text, View, useWindowDimensions } from "react-native";
 import Svg, { Circle, Line, Path } from "react-native-svg";
 import { colors } from "./kit";
 
@@ -9,7 +9,11 @@ export type Blip = { id: string; kind: BlipKind; label: string; sub?: string; co
 const ICON: Record<BlipKind, string> = { car: "🚗", obd: "📡", adb: "📺", ble: "🔵" };
 
 /** Радар: вращающаяся развёртка, найденные устройства появляются точками, нажатие открывает действия. */
-export function Radar({ blips, scanning, onPick, paused = false, size = 480 }: { blips: Blip[]; scanning: boolean; onPick: (b: Blip) => void; paused?: boolean; size?: number }) {
+export function Radar({ blips, scanning, onPick, paused = false, size: maxSize = 480 }: { blips: Blip[]; scanning: boolean; onPick: (b: Blip) => void; paused?: boolean; size?: number }) {
+  // На телефоне и в узком окне радар уменьшается, чтобы не выходить за экран (боковое меню на широком экране занимает 320).
+  const { width } = useWindowDimensions();
+  const room = (width >= 820 ? width - 320 : width) - 72;
+  const size = Math.max(260, Math.min(maxSize, room));
   const [spin] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
@@ -73,9 +77,11 @@ export function Radar({ blips, scanning, onPick, paused = false, size = 480 }: {
             >
               <Text style={{ fontSize: 20 }}>{ICON[b.kind]}</Text>
             </View>
-            <Text numberOfLines={2} style={{ color: colors.text, fontSize: 11, fontWeight: "600", textAlign: "center", marginTop: 2 }}>
-              {b.label}
-            </Text>
+            {size >= 400 ? (
+              <Text numberOfLines={2} style={{ color: colors.text, fontSize: 11, fontWeight: "600", textAlign: "center", marginTop: 2 }}>
+                {b.label}
+              </Text>
+            ) : null}
           </Pressable>
         );
       })}

@@ -193,7 +193,7 @@ export default function InterfaceDemoScreen() {
               </>
             ) : (
               <>
-                <Muted>Так экраны выглядят в автомобиле сейчас. Выберите файл справа, и салон покажет результат.</Muted>
+                <Muted>Так экраны выглядят в автомобиле сейчас. Выберите файл интерфейса из списка, и салон покажет результат.</Muted>
                 {describeProfile(profile).map((l) => (
                   <Muted key={l}>• {l}</Muted>
                 ))}

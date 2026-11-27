@@ -73,8 +73,8 @@ export function Button({
 export function Badge({ text, tone = "muted" }: { text: string; tone?: "good" | "warn" | "bad" | "accent" | "muted" }) {
   const c = tone === "muted" ? colors.muted : colors[tone];
   return (
-    <View style={[s.badge, { borderColor: c }]}>
-      <Text style={{ color: c, fontSize: 12, fontWeight: "600" }}>{text}</Text>
+    <View style={[s.badge, { borderColor: c, flexShrink: 1, maxWidth: "100%" }]}>
+      <Text style={{ color: c, fontSize: 12, fontWeight: "600", flexShrink: 1 }}>{text}</Text>
     </View>
   );
 }

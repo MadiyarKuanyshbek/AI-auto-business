@@ -161,12 +161,12 @@ export default function ConnectScreen() {
       if (connection.status !== "ready") offered.current = null;
       return;
     }
-    if (offered.current === (liveScan.vin ?? "no-vin")) return;
+    if (!focused || offered.current === (liveScan.vin ?? "no-vin")) return;
     offered.current = liveScan.vin ?? "no-vin";
     logEvent(`Автомобиль определён: ${vehicleTitle(liveScan)}`, connection.kind !== "demo");
     const t = setTimeout(() => setSheet({ id: "connected", kind: "car", label: vehicleTitle(liveScan), sub: "Подключено", connected: true }), 400);
     return () => clearTimeout(t);
-  }, [liveScan, connection]);
+  }, [liveScan, connection, focused]);
 
   useEffect(() => {
     const t = setTimeout(() => void startRadar(), 300);
@@ -247,6 +247,25 @@ export default function ConnectScreen() {
         </View>
         <Radar blips={blips} scanning={radarScanning} paused={!focused} onPick={setSheet} />
         <Muted>{view === "demo" ? "🚗 виртуальные автомобили" : "📡 Wi‑Fi адаптеры OBD · 📺 магнитолы · 🔵 Bluetooth"}</Muted>
+        {blips.length > 0 ? (
+          <View style={{ gap: 6 }}>
+            <Body style={{ fontWeight: "700" }}>Найдено: нажмите, чтобы выбрать</Body>
+            {blips.map((b) => (
+              <Pressable
+                key={b.id}
+                onPress={() => setSheet(b)}
+                style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: b.connected ? colors.good : colors.border, backgroundColor: colors.cardAlt }}
+              >
+                <Text style={{ fontSize: 20 }}>{b.kind === "car" ? "🚗" : b.kind === "obd" ? "📡" : b.kind === "adb" ? "📺" : "🔵"}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontWeight: "700" }}>{b.label}</Text>
+                  {b.sub ? <Muted>{b.connected ? "Подключено" : b.sub}</Muted> : null}
+                </View>
+                <Text style={{ color: colors.accent }}>›</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
           <View style={{ flexGrow: 1 }}><Button title="Искать снова" kind="ghost" onPress={() => void startRadar()} disabled={radarScanning} /></View>
           {view === "real" ? <View style={{ flexGrow: 1 }}><Button title="Найти Bluetooth" kind="ghost" onPress={() => void pickWebBle()} disabled={!ble.supported} /></View> : null}

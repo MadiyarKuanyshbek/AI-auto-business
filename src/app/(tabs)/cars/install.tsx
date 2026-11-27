@@ -1,11 +1,12 @@
 import { useLocalSearchParams } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Switch, View } from "react-native";
 import { LEGAL_NOTICE } from "../../../core/catalog";
 import { installChecks, installPackage, readBackup, restoreBackup, type InstallOutcome, type InstallRequest } from "../../../core/install";
 import { sha256Hex } from "../../../core/sha256";
 import { useSession } from "../../../session";
 import { useStore } from "../../../storage/store";
+import { vehicleTitle } from "../../../storage/model";
 import { Badge, Body, Button, Card, Empty, H2, Muted, Progress, Row, Screen, colors } from "../../../ui/kit";
 
 /** Ориентировочная скорость записи в зависимости от канала связи, КБ/с (беспроводные каналы медленные). */
@@ -33,6 +34,17 @@ export default function InstallScreen() {
   const [fraction, setFraction] = useState(0);
   const [outcome, setOutcome] = useState<InstallOutcome | null>(null);
   const [note, setNote] = useState<string | null>(null);
+
+  // Пока идёт запись, закрытие окна приложения требует подтверждения: обрыв может повредить блок.
+  useEffect(() => {
+    if (!busy || typeof window === "undefined") return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [busy]);
 
   if (!loaded || !ecu || !elm || !liveScan || connection.status !== "ready") {
     return (
@@ -111,6 +123,10 @@ export default function InstallScreen() {
   return (
     <Screen>
       <H2>{loaded.pkg.title}</H2>
+      <Card tone="good">
+        <Body style={{ fontWeight: "800" }}>✅ Подключено: {vehicleTitle(liveScan)}</Body>
+        <Muted>Установка идёт в этот автомобиль{connection.kind === "demo" ? " (демо: виртуальный блок)" : ""}.</Muted>
+      </Card>
       <Muted>Версия {loaded.pkg.version} · блок: {ecu.name} · текущее ПО {ecu.ident.supplierSoftwareNumber ?? ecu.ident.softwareNumber ?? "—"}</Muted>
 
       <Card>

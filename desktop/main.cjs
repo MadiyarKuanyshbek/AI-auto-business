@@ -331,6 +331,20 @@ function createWindow() {
     );
   });
 
+  // Идёт запись прошивки: спрашиваем, прежде чем закрыть окно (обрыв может повредить блок).
+  win.webContents.on("will-prevent-unload", (event) => {
+    const choice = dialog.showMessageBoxSync(win, {
+      type: "warning",
+      buttons: ["Остаться", "Закрыть всё равно"],
+      defaultId: 0,
+      cancelId: 0,
+      title: "Идёт запись",
+      message: "Идёт запись прошивки в блок автомобиля.",
+      detail: "Если закрыть приложение сейчас, блок может остаться с неполной прошивкой. Подождите завершения.",
+    });
+    if (choice === 1) event.preventDefault();
+  });
+
   void win.loadURL("app://autoflash/");
   return win;
 }

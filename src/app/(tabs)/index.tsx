@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { matchScannedCar } from "../../core/cars";
 import { DEMO_VEHICLES } from "../../core/sim/vehicles";
@@ -11,7 +11,10 @@ import { pickSerialTransport, serialSupported } from "../../transport/serial";
 import { createWifiTransport, wifiSupported } from "../../transport/wifi";
 import { vehicleTitle } from "../../storage/model";
 import { resolveModelYear } from "../../core/vin";
+import { desktopBridge } from "../../transport/desktop";
+import { ActionSheet, type SheetAction } from "../../ui/ActionSheet";
 import { Badge, Body, Button, Card, Field, H1, H2, Muted, Progress, Row, Screen, colors } from "../../ui/kit";
+import { Radar, type Blip } from "../../ui/Radar";
 
 type Mode = "demo" | "ble" | "serial" | "wifi";
 
@@ -91,11 +94,102 @@ export default function ConnectScreen() {
   }
 
   const ready = connection.status === "ready";
+  const [showManual, setShowManual] = useState(false);
+  const [radarScanning, setRadarScanning] = useState(false);
+  const [found, setFound] = useState<Blip[]>([]);
+  const [connectedId, setConnectedId] = useState<string | null>(null);
+  const [sheet, setSheet] = useState<Blip | null>(null);
+  const bridge = desktopBridge();
+
+  // Радар: сначала появляются демо-автомобили, затем устройства, найденные в сети.
+  const startRadar = useCallback(async () => {
+    setRadarScanning(true);
+    setFound([]);
+    const add = (b: Blip) => setFound((l) => (l.some((x) => x.id === b.id) ? l : [...l, b]));
+    if (settings.showDemo) {
+      DEMO_VEHICLES.forEach((v, i) => setTimeout(() => add({ id: `demo-${i}`, kind: "car", label: v.label, sub: "Демо" }), 500 + i * 450));
+    }
+    try {
+      const list = (await bridge?.net.scan()) ?? [];
+      for (const d of list) {
+        if (d.port === 5555) add({ id: `adb-${d.ip}:${d.port}`, kind: "adb", label: `Магнитола ${d.ip}`, sub: "ADB" });
+        else add({ id: `obd-${d.ip}:${d.port}`, kind: "obd", label: `Wi‑Fi адаптер ${d.ip}`, sub: `порт ${d.port}` });
+      }
+    } catch {
+      // Сеть недоступна: остаются демо-автомобили и ручное подключение.
+    }
+    setTimeout(() => setRadarScanning(false), 1200);
+  }, [bridge, settings.showDemo]);
+
+  useEffect(() => {
+    const t = setTimeout(() => void startRadar(), 300);
+    return () => clearTimeout(t);
+  }, [startRadar]);
+
+  const blips: Blip[] = found.map((b) => ({ ...b, connected: ready && connectedId === b.id }));
+  if (ready && !blips.some((b) => b.connected)) blips.push({ id: "connected", kind: "car", label: connection.label, sub: "Подключено", connected: true });
+
+  async function sheetConnect(b: Blip) {
+    setSheet(null);
+    setConnectedId(b.id);
+    if (b.id.startsWith("demo-")) await session.connectDemo(Number(b.id.slice(5)));
+    else if (b.id.startsWith("obd-")) {
+      const [ip, port] = b.id.slice(4).split(":");
+      await session.connect(createWifiTransport(ip, Number(port) || 35000));
+    }
+  }
+
+  function sheetActions(b: Blip): SheetAction[] {
+    const go = (path: string, params?: Record<string, string>) => () => {
+      setSheet(null);
+      router.push({ pathname: path as never, params } as never);
+    };
+    if (b.connected) {
+      return [
+        { title: "Прошивки и обновления", hint: "Блоки автомобиля и доступные пакеты", onPress: go("/cars") },
+        { title: "Интерфейс и экраны", hint: "Как будет выглядеть салон, файлы интерфейса", kind: "ghost", onPress: go("/interface") },
+        { title: "Приложения и русификация", hint: "Установка приложений на магнитолу по Wi‑Fi", kind: "ghost", onPress: go("/cars/apps") },
+        { title: "Отключиться", kind: "ghost", onPress: () => { setSheet(null); void session.disconnect(); } },
+      ];
+    }
+    if (b.kind === "adb") {
+      const address = b.id.slice(4);
+      return [
+        { title: "Установить приложения", hint: "Яндекс Навигатор, 2ГИС, VLC и другие", onPress: go("/cars/apps", { address }) },
+        { title: "Русификация: выбор языка", hint: "Откроет выбор языка на экране магнитолы", kind: "ghost", onPress: go("/cars/apps", { address, action: "locale" }) },
+        { title: "Настройки магнитолы", kind: "ghost", onPress: go("/cars/apps", { address, action: "settings" }) },
+      ];
+    }
+    if (b.kind === "obd") return [{ title: "Подключиться к адаптеру", hint: "Автомобиль определится сам", onPress: () => void sheetConnect(b) }];
+    return [{ title: "Подключиться и определить авто", hint: "Виртуальный автомобиль для показа и проверки", onPress: () => void sheetConnect(b) }];
+  }
 
   return (
     <Screen>
       <H1>AutoFlash</H1>
-      <Muted>Подключитесь к OBD-адаптеру в авто: приложение само определит автомобиль, блоки и версии прошивок.</Muted>
+      <Muted>Радар ищет автомобили и устройства рядом. Нажмите на найденное, чтобы подключиться или выбрать, что установить.</Muted>
+
+      <Card>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <H2>Радар</H2>
+          <Badge tone={radarScanning ? "accent" : "muted"} text={radarScanning ? "Поиск…" : `Найдено: ${blips.length}`} />
+        </View>
+        <Radar blips={blips} scanning={radarScanning} onPick={setSheet} />
+        <Muted>🚗 автомобили · 📡 Wi‑Fi адаптеры OBD · 📺 магнитолы · 🔵 Bluetooth</Muted>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+          <View style={{ flexGrow: 1 }}><Button title="Искать снова" kind="ghost" onPress={() => void startRadar()} disabled={radarScanning} /></View>
+          <View style={{ flexGrow: 1 }}><Button title="Найти Bluetooth" kind="ghost" onPress={() => void pickWebBle()} disabled={!ble.supported} /></View>
+          {serialSupported ? <View style={{ flexGrow: 1 }}><Button title="COM / USB" kind="ghost" onPress={() => void connectSerial()} /></View> : null}
+        </View>
+        {bleError ? <Body style={{ color: colors.bad }}>{bleError}</Body> : null}
+      </Card>
+      <ActionSheet
+        visible={!!sheet}
+        title={sheet?.label ?? ""}
+        subtitle={sheet?.connected ? "Подключено. Что сделать?" : sheet?.sub}
+        actions={sheet ? sheetActions(sheet) : []}
+        onClose={() => setSheet(null)}
+      />
 
       <Card tone={ready ? "good" : connection.status === "error" ? "bad" : undefined}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
@@ -115,7 +209,9 @@ export default function ConnectScreen() {
 
       <VehicleZone onOpen={() => router.push("/cars")} />
 
-      {!ready ? (
+      {!ready ? <Button title={showManual ? "Скрыть ручное подключение" : "Подключить вручную"} kind="ghost" onPress={() => setShowManual((v) => !v)} /> : null}
+
+      {!ready && showManual ? (
         <>
           <View style={{ flexDirection: "row", gap: 8 }}>
             {(

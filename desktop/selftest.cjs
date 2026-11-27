@@ -121,7 +121,10 @@ async function run(win, outDir, app) {
     step("вкладок «Клиенты» и «Настройки» нет", !menuText.includes("Клиенты и заказы") && !menuText.includes("Настройки"));
 
     // ════════ Часть 1: виртуальный автомобиль (демо-адаптер внутри приложения) ════════
-    step("демо: выбор автомобиля", await click("Volkswagen Golf 6 2.0 TDI (демо)"));
+    step("радар: на экране подключения есть радар", await js("!!document.querySelector('[data-testid=radar]')"));
+    step("радар: нашлись демо-автомобили", await waitText("Найдено: 6", 15000) || (await text()).includes("Найдено:"));
+    step("радар: нажатие на автомобиль открывает окно действий", await click("Volkswagen Golf 6 2.0 TDI (демо)") && await waitText("Подключиться и определить авто", 4000));
+    step("радар: подключение из окна действий", await click("Подключиться и определить авто"));
     step("автомобиль определился сам (без нажатия «Сканировать»)", await waitText("Подключённый автомобиль", 15000) && await waitText("WVWZZZ1KZBW123456", 25000));
     const zone = await text();
     step("зона показывает марку, год и VIN", zone.includes("VOLKSWAGEN (2011)") && zone.includes("WVWZZZ1KZBW123456"));
@@ -129,6 +132,10 @@ async function run(win, outDir, app) {
     step("зона показывает чип адаптера и возможность прошивки", zone.includes("STN2120") && zone.includes("Прошивка возможна"));
     step("зона показывает шину и напряжение", zone.includes("CAN 11 бит") && /12\.7\s*В/.test(zone));
     await shot("02-connected-zone");
+    step("радар: нажатие на подключённый автомобиль показывает «что установить»", await click("Volkswagen Golf 6 2.0 TDI (демо)") && await waitText("Приложения и русификация", 4000) && (await text()).includes("Интерфейс и экраны"));
+    await shot("02b-car-actions");
+    await click("Закрыть");
+    await sleep(400);
 
     // ── Вкладка «Авто и прошивки» ──
     await goTo("2. Авто и прошивки", "cars");
@@ -309,9 +316,11 @@ async function run(win, outDir, app) {
     step("после отключения зона авто очищена", (await text()).includes("Подключитесь к адаптеру: автомобиль определится сам"));
 
     // ════════ Часть 2: настоящий канал (Wi-Fi/TCP) с STN-адаптером ════════
-    step("вкладка Wi-Fi", await click("Wi‑Fi"));
-    step("поле адреса", await fill("Адрес", "127.0.0.1"));
-    await click("Подключиться");
+    await click("Искать снова");
+    step("радар: найден Wi‑Fi адаптер в сети", await waitText("Wi‑Fi адаптер 127.0.0.1", 40000));
+    await shot("02c-radar-found-adapter");
+    step("радар: окно действий для адаптера", await click("Wi‑Fi адаптер 127.0.0.1") && await waitText("Подключиться к адаптеру", 4000));
+    await click("Подключиться к адаптеру");
     step("TCP: автомобиль определился автоматически", await waitText("WVWZZZ1KZBW123456", 30000));
     await sleep(800);
     const tcp = await text();

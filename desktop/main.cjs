@@ -7,6 +7,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
 const netSocket = require("node:net");
+const os = require("node:os");
 
 const WEB_ROOT = path.join(__dirname, "web");
 const SELFTEST = process.argv.find((a) => a.startsWith("--selftest="))?.slice("--selftest=".length);
@@ -116,6 +117,49 @@ ipcMain.handle("backup:save", (_e, { json, name }) => {
 });
 
 ipcMain.handle("backup:open-folder", () => shell.openPath(backupDir()));
+
+// ───────────── Поиск устройств в Wi-Fi сети (радар) ─────────────
+// Проверяем только свою домашнюю сеть (/24 от адресов компьютера) и два порта: 35000 (Wi-Fi адаптеры OBD)
+// и 5555 (ADB магнитол). Ничего не отправляем, только проверяем, открыт ли порт.
+function probe(ip, port, timeout = 350) {
+  return new Promise((resolve) => {
+    const s = netSocket.createConnection({ host: ip, port });
+    const done = (ok) => {
+      s.destroy();
+      resolve(ok);
+    };
+    s.setTimeout(timeout, () => done(false));
+    s.once("connect", () => done(true));
+    s.once("error", () => done(false));
+  });
+}
+
+ipcMain.handle("net:scan", async () => {
+  const own = new Set();
+  const hosts = new Set(["192.168.0.10", "192.168.4.1"]);
+  if (SELFTEST) hosts.add("127.0.0.1");
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const i of list || []) {
+      if (i.family !== "IPv4" || i.internal) continue;
+      own.add(i.address);
+      const p = i.address.split(".");
+      if (!(p[0] === "10" || (p[0] === "192" && p[1] === "168") || (p[0] === "172" && Number(p[1]) >= 16 && Number(p[1]) <= 31))) continue;
+      for (let n = 1; n < 255; n++) hosts.add(`${p[0]}.${p[1]}.${p[2]}.${n}`);
+    }
+  }
+  const targets = [];
+  for (const ip of hosts) if (!own.has(ip)) for (const port of [35000, 5555]) targets.push({ ip, port });
+  const found = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < targets.length) {
+      const t = targets[next++];
+      if (await probe(t.ip, t.port)) found.push(t);
+    }
+  };
+  await Promise.all(Array.from({ length: 96 }, worker));
+  return found;
+});
 
 // ───────────── ADB: установка приложений на магнитолу по Wi-Fi ─────────────
 // Запускаем только adb.exe из поставки и только заранее разрешённые команды. Файл .apk выбирается окном системы.

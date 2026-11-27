@@ -1,4 +1,5 @@
-import { useCallback, useState } from "react";
+import { useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Linking, Pressable, Text, View } from "react-native";
 import { LANGUAGE_HINT, RECOMMENDED_APPS, explainAdbError, parseAddress, parseDevices, parsePackages, type AdbDevice } from "../../../core/adb";
 import { desktopBridge } from "../../../transport/desktop";
@@ -7,7 +8,8 @@ import { Badge, Body, Button, Card, Field, H2, Muted, Screen, colors } from "../
 /** Установка приложений и русификация магнитолы по Wi-Fi (ADB). Только в настольной программе. */
 export default function AppsScreen() {
   const bridge = desktopBridge();
-  const [address, setAddress] = useState("");
+  const params = useLocalSearchParams<{ address?: string; action?: string }>();
+  const [address, setAddress] = useState(params.address ?? "");
   const [devices, setDevices] = useState<AdbDevice[]>([]);
   const [serial, setSerial] = useState<string | null>(null);
   const [packages, setPackages] = useState<string[]>([]);
@@ -25,6 +27,32 @@ export default function AppsScreen() {
     setDevices(list);
     setSerial((cur) => (cur && list.some((d) => d.id === cur && d.state === "device") ? cur : list.find((d) => d.state === "device")?.id ?? null));
   }, [bridge]);
+
+  // Пришли с радара: подключаемся сами и, если выбрано, сразу открываем язык или настройки.
+  const autoDone = useRef<string | null>(null);
+  useEffect(() => {
+    const key = `${params.address ?? ""}|${params.action ?? ""}`;
+    if (!bridge || !params.address || autoDone.current === key) return;
+    autoDone.current = key;
+    const t = setTimeout(() => {
+      void (async () => {
+        const a = parseAddress(params.address as string);
+        if (!a.ok) return setMessage({ ok: false, text: a.error });
+        setBusy(true);
+        const r = await bridge.adb.run({ op: "connect", address: a.address });
+        setBusy(false);
+        if (!r.ok) return setMessage({ ok: false, text: explainAdbError(r.out) });
+        setMessage({ ok: true, text: `Подключено: ${a.address}` });
+        setSerial(a.address);
+        setDevices(parseDevices((await bridge.adb.run({ op: "devices" })).out));
+        if (params.action === "locale" || params.action === "settings") {
+          await bridge.adb.run({ op: params.action, serial: a.address });
+          note(params.action === "locale" ? "Открыт выбор языка на магнитоле" : "Открыты настройки магнитолы");
+        }
+      })();
+    }, 100);
+    return () => clearTimeout(t);
+  }, [bridge, params.address, params.action]);
 
   async function connect() {
     if (!bridge) return;

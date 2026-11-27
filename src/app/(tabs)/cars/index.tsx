@@ -12,6 +12,7 @@ import { useStore } from "../../../storage/store";
 import { vehicleTitle } from "../../../storage/model";
 import { Badge, Body, Button, Card, Empty, Field, H1, H2, Muted, Row, Screen, colors } from "../../../ui/kit";
 import { Diagnostics } from "../../../ui/Diagnostics";
+import { DIFFERENCE, TASKS, type TaskKind } from "../../../core/guides";
 
 const EXAMPLES = ["камри", "bmw x5", "прадо 2019", "golf", "мерседес е класс", "крета"];
 const STATUS_TEXT = { ready: "Готов к установке", demo: "Демо" } as const;
@@ -47,6 +48,25 @@ export default function CarsScreen() {
   return (
     <Screen>
       <H1>Авто и прошивки</H1>
+      <Muted>Выберите, что хотите сделать. У каждого пункта есть простое объяснение и шаги для вашей марки.</Muted>
+
+      <H2>Что вы хотите сделать?</H2>
+      {(["firmware", "russify", "apps"] as TaskKind[]).map((k) => {
+        const t = TASKS[k];
+        return (
+          <Card key={k}>
+            <Body style={{ fontWeight: "800", fontSize: 17 }}>{`${t.icon} ${t.title}`}</Body>
+            <Muted>{t.short}</Muted>
+            <Button title="Как это сделать" onPress={() => router.push({ pathname: "/cars/task", params: { kind: k } })} />
+          </Card>
+        );
+      })}
+      <Card>
+        <Body style={{ fontWeight: "700" }}>Чем это отличается</Body>
+        {DIFFERENCE.map((d) => (
+          <Muted key={d.title}>• {d.title}: {d.text}</Muted>
+        ))}
+      </Card>
 
       <H2>Подключённый автомобиль</H2>
       {!scan ? (

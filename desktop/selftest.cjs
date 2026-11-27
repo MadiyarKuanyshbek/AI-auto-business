@@ -161,6 +161,14 @@ async function run(win, outDir, app) {
     // ── Вкладка «Авто и прошивки» ──
     await goTo("2. Авто и прошивки", "cars");
     step("вкладка «Авто и прошивки» открыта", await waitText("Поиск автомобиля"));
+    step("вкладка 2: карточки «Что вы хотите сделать?»", (await text()).includes("Что вы хотите сделать?") && (await text()).includes("Русификация") && (await text()).includes("Установка приложений"));
+    step("вкладка 2: открытие объяснения русификации", await click("Как это сделать", { nth: 1 }) && await waitText("Что это такое", 4000));
+    step("русификация: простое объяснение и шаги для марки", (await text()).includes("перевод интерфейса магнитолы") && (await text()).includes("Как это сделать: Chery") && (await text()).includes("Настройки → Язык"));
+    step("русификация: выбор другой марки меняет шаги", await click("Haval") && await waitText("Как это сделать: Haval", 3000));
+    await shot("03b-task-russify");
+    await js("history.back()");
+    await sleep(700);
+
     const cars = await text();
     step("подключённое авто показано рядом с поиском", cars.includes("Подключённый автомобиль") && cars.includes("VOLKSWAGEN (2011)"));
     step("блок двигателя с семейством Bosch EDC17", cars.includes("Bosch EDC17"));

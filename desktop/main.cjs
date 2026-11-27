@@ -206,13 +206,24 @@ let pickedApk = null;
 const SERIAL_RE = /^(\d{1,3}(\.\d{1,3}){3}:\d{1,5}|emulator-\d+|[A-Za-z0-9]{6,32})$/;
 const PKG_RE = /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/;
 
+// Успех определяем по смыслу команды: в списке приложений могут встречаться слова «error» или «failed» в названиях.
+function adbSucceeded(args, out, err) {
+  if (err) return false;
+  const first = args[0] === "-s" ? args[2] : args[0];
+  if (first === "connect") return /connected to/i.test(out) && !/cannot|failed|unable|refused/i.test(out);
+  if (first === "install") return /^\s*Success/im.test(out);
+  if (first === "devices" || first === "version") return true;
+  if (first === "shell" && args.includes("pm")) return !/^(error|exception|adb:)/im.test(out);
+  return !/^(error|adb: |failure|failed)/im.test(out);
+}
+
 function runAdb(args, timeout = 30000) {
   return new Promise((resolve) => {
     const exe = adbPath();
     if (!fs.existsSync(exe)) return resolve({ ok: false, out: "Не найден adb.exe: переустановите приложение." });
     execFile(exe, args, { timeout, windowsHide: true, maxBuffer: 4 * 1024 * 1024, encoding: "utf8" }, (err, stdout, stderr) => {
       const out = `${stdout || ""}${stderr || ""}`;
-      resolve({ ok: !err && !/failed|error|unable|cannot|refused/i.test(out), out });
+      resolve({ ok: adbSucceeded(args, out, err), out });
     });
   });
 }

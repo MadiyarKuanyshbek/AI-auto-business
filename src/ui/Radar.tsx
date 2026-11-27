@@ -9,14 +9,15 @@ export type Blip = { id: string; kind: BlipKind; label: string; sub?: string; co
 const ICON: Record<BlipKind, string> = { car: "🚗", obd: "📡", adb: "📺", ble: "🔵" };
 
 /** Радар: вращающаяся развёртка, найденные устройства появляются точками, нажатие открывает действия. */
-export function Radar({ blips, scanning, onPick, size = 480 }: { blips: Blip[]; scanning: boolean; onPick: (b: Blip) => void; size?: number }) {
+export function Radar({ blips, scanning, onPick, paused = false, size = 480 }: { blips: Blip[]; scanning: boolean; onPick: (b: Blip) => void; paused?: boolean; size?: number }) {
   const [spin] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
+    if (paused) return;
     const loop = Animated.loop(Animated.timing(spin, { toValue: 1, duration: scanning ? 2200 : 6000, easing: Easing.linear, useNativeDriver: false }));
     loop.start();
     return () => loop.stop();
-  }, [spin, scanning]);
+  }, [spin, scanning, paused]);
 
   const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
   const c = size / 2;

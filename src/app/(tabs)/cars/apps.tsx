@@ -187,8 +187,8 @@ export default function AppsScreen() {
       {log.length > 0 ? (
         <Card>
           <Body style={{ fontWeight: "700" }}>Журнал</Body>
-          {log.map((l) => (
-            <Muted key={l}>{l}</Muted>
+          {log.map((l, i) => (
+            <Muted key={`${i}-${l}`}>{l}</Muted>
           ))}
         </Card>
       ) : null}

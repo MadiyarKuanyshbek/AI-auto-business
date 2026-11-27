@@ -9,7 +9,7 @@ type RadioState = { kind: "Bluetooth" | "WiFi"; state: string };
 const LABEL = { Bluetooth: "Bluetooth компьютера", WiFi: "Wi‑Fi компьютера" } as const;
 
 /** Включение и выключение Bluetooth и Wi‑Fi компьютера прямо из приложения (Windows). */
-export function RadioPanel() {
+export function RadioPanel({ active = true }: { active?: boolean }) {
   const bridge = desktopBridge();
   const [radios, setRadios] = useState<RadioState[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -24,15 +24,16 @@ export function RadioPanel() {
     } else setError(r.error ?? "Не удалось прочитать состояние");
   }, [bridge]);
 
+  // Состояние читаем, только пока вкладка открыта: каждый запрос запускает PowerShell.
   useEffect(() => {
-    if (!bridge) return;
+    if (!bridge || !active) return;
     const first = setTimeout(() => void refresh(), 200);
     const timer = setInterval(() => void refresh(), 5000);
     return () => {
       clearTimeout(first);
       clearInterval(timer);
     };
-  }, [bridge, refresh]);
+  }, [bridge, refresh, active]);
 
   async function toggle(kind: RadioState["kind"], on: boolean) {
     if (!bridge) return;
@@ -73,7 +74,7 @@ export function RadioPanel() {
 }
 
 /** Что происходит прямо сейчас: подключение, радар, связь и обмен с адаптером в реальном времени. */
-export function LiveMonitor({ mode }: { mode: "real" | "demo" }) {
+export function LiveMonitor({ mode, active = true }: { mode: "real" | "demo"; active?: boolean }) {
   const { connection, exchangeLog, scanning, progress } = useSession();
   const events = useLiveEvents().filter((e) => e.real === (mode === "real"));
   const [, force] = useState(0);
@@ -81,9 +82,10 @@ export function LiveMonitor({ mode }: { mode: "real" | "demo" }) {
 
   // Обмен с адаптером копится в самом адаптере, поэтому обновляем экран по таймеру.
   useEffect(() => {
+    if (!active) return;
     const t = setInterval(() => force((n) => n + 1), 700);
     return () => clearInterval(t);
-  }, []);
+  }, [active]);
 
   const connected = connection.status === "ready";
   const log = connected && (connection.kind === "demo") === (mode === "demo") ? exchangeLog().slice(-14) : [];
@@ -103,8 +105,8 @@ export function LiveMonitor({ mode }: { mode: "real" | "demo" }) {
           {scanning ? <Muted>Определяю автомобиль: {progress?.step ?? "…"}</Muted> : null}
           <Muted style={{ fontWeight: "700" }}>События</Muted>
           {events.length === 0 ? <Muted>Пока ничего.</Muted> : null}
-          {events.slice(-8).reverse().map((e) => (
-            <Text key={e.t + e.text} style={{ color: colors.text, fontSize: 12 }}>
+          {events.slice(-8).reverse().map((e, i) => (
+            <Text key={`${e.t}-${i}`} style={{ color: colors.text, fontSize: 12 }}>
               {new Date(e.t).toLocaleTimeString("ru-RU")}  {e.text}
             </Text>
           ))}

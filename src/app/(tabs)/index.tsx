@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { matchScannedCar } from "../../core/cars";
@@ -105,16 +105,28 @@ export default function ConnectScreen() {
   const [connectedId, setConnectedId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<Blip | null>(null);
   const bridge = desktopBridge();
+  const scanToken = useRef(0);
+  const [focused, setFocused] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      return () => setFocused(false);
+    }, []),
+  );
 
   // Радар: сначала появляются демо-автомобили, затем устройства, найденные в сети.
   const startRadar = useCallback(async () => {
+    const token = ++scanToken.current;
     setRadarScanning(true);
     setFound([]);
-    const add = (b: Blip) => setFound((l) => (l.some((x) => x.id === b.id) ? l : [...l, b]));
+    const add = (b: Blip) => {
+      if (token !== scanToken.current) return; // поиск уже сменился (другой режим или повторный запуск)
+      setFound((l) => (l.some((x) => x.id === b.id) ? l : [...l, b]));
+    };
     if (view === "demo") {
       logEvent("Демо: показываю виртуальные автомобили", false);
       DEMO_VEHICLES.forEach((v, i) => setTimeout(() => add({ id: `demo-${i}`, kind: "car", label: v.label, sub: "Демо" }), 500 + i * 450));
-      setTimeout(() => setRadarScanning(false), 500 + DEMO_VEHICLES.length * 450 + 600);
+      setTimeout(() => token === scanToken.current && setRadarScanning(false), 500 + DEMO_VEHICLES.length * 450 + 600);
       return;
     }
     logEvent("Радар: ищу настоящие устройства в сети…");
@@ -129,7 +141,7 @@ export default function ConnectScreen() {
     } catch {
       // Сеть недоступна: остаются демо-автомобили и ручное подключение.
     }
-    setTimeout(() => setRadarScanning(false), 1200);
+    setTimeout(() => token === scanToken.current && setRadarScanning(false), 1200);
   }, [bridge, view]);
 
   // Подключение и определение автомобиля в журнале событий; когда авто определено, сразу предлагаем, что делать дальше.
@@ -230,7 +242,7 @@ export default function ConnectScreen() {
           <H2>Радар</H2>
           <Badge tone={radarScanning ? "accent" : "muted"} text={radarScanning ? "Поиск…" : `Найдено: ${blips.length}`} />
         </View>
-        <Radar blips={blips} scanning={radarScanning} onPick={setSheet} />
+        <Radar blips={blips} scanning={radarScanning} paused={!focused} onPick={setSheet} />
         <Muted>{view === "demo" ? "🚗 виртуальные автомобили" : "📡 Wi‑Fi адаптеры OBD · 📺 магнитолы · 🔵 Bluetooth"}</Muted>
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
           <View style={{ flexGrow: 1 }}><Button title="Искать снова" kind="ghost" onPress={() => void startRadar()} disabled={radarScanning} /></View>
@@ -239,7 +251,7 @@ export default function ConnectScreen() {
         </View>
         {bleError ? <Body style={{ color: colors.bad }}>{bleError}</Body> : null}
       </Card>
-      {view === "real" ? <RadioPanel /> : null}
+      {view === "real" ? <RadioPanel active={focused} /> : null}
       <ActionSheet
         visible={!!sheet}
         title={sheet?.label ?? ""}
@@ -341,7 +353,7 @@ export default function ConnectScreen() {
         <Muted>• Для прошивки блоков нужен отдельный интерфейс (J2534 или профильный программатор): ELM327 для записи не подходит.</Muted>
       </Card>
       )}
-      <LiveMonitor mode={view} />
+      <LiveMonitor mode={view} active={focused} />
     </Screen>
   );
 }

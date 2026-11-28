@@ -131,7 +131,7 @@ async function run(win, outDir, app) {
     })()`);
     step("меню слева вертикально, три пункта по порядку", nav.every(Boolean) && nav.every((p) => p.x < 300) && nav[1].y > nav[0].y && nav[2].y > nav[1].y, JSON.stringify(nav));
     const menuText = await text();
-    step("вкладок «Клиенты» и «Настройки» нет", !menuText.includes("Клиенты и заказы") && !menuText.includes("Настройки"));
+    step("вкладок «Клиенты» и «Настройки» нет", !menuText.includes("Клиенты и заказы") && !menuText.split(String.fromCharCode(10)).map((t) => t.trim()).includes("Настройки"));
 
     // ════════ Часть 1: виртуальный автомобиль (демо-адаптер внутри приложения) ════════
     step("режимы: по умолчанию реальный, демо отдельно", (await text()).includes("Реальный режим") && (await text()).includes("Демо-режим") && !(await text()).includes("ДЕМО: виртуальные автомобили"));
@@ -420,6 +420,12 @@ async function run(win, outDir, app) {
     step("приложения: экран открыт, показан автомобиль", await waitText("Приложения и русификация", 4000) && (await text()).includes("Автомобиль:"));
     step("приложения: магнитолу ищет сама и сообщает, что не найдена", await waitText("Магнитола не найдена", 60000));
     step("приложения: рекомендованные приложения", (await text()).includes("Яндекс Навигатор"));
+    const libList = await js(`window.autoflash.apps.list().then((l) => JSON.stringify(l.map((x) => x.id)))`);
+    step("библиотека приложений: VLC (два вида процессора) и RuStore в списке", ["vlc-arm64", "vlc-armv7", "rustore"].every((id) => String(libList).includes(id)), String(libList));
+    step("библиотека приложений: показана на экране с кнопками скачивания", (await text()).includes("Библиотека приложений") && (await text()).includes("RuStore (магазин приложений)") && (await text()).includes("Настройки Bluetooth Windows"));
+    const badDl = await js(`window.autoflash.apps.download("http://evil.example/x.apk").then((r) => JSON.stringify(r))`);
+    step("библиотека приложений: чужой адрес скачать нельзя (только список официальных)", String(badDl).includes('"ok":false'), String(badDl).slice(0, 80));
+
     step("приложения: ввод адреса вручную", await click("Ввести адрес вручную"));
     step("приложения: поле адреса", await fill("Адрес магнитолы", "abc"));
     await click("Подключиться");

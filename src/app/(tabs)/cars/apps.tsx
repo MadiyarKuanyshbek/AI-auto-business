@@ -28,6 +28,9 @@ export default function AppsScreen() {
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [showManual, setShowManual] = useState(false);
+  const [lib, setLib] = useState<{ id: string; title: string; purpose: string; size: string; hasChecksum: boolean; downloaded: boolean; file: string | null }[]>([]);
+  const [libBusy, setLibBusy] = useState<string | null>(null);
+  const [libMessage, setLibMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   const carTitle = liveScan ? vehicleTitle(liveScan) : null;
   const demo = connection.status === "ready" && connection.kind === "demo";
@@ -117,6 +120,47 @@ export default function AppsScreen() {
     return () => clearTimeout(t);
   }, [bridge, demo, params.address, params.action, refresh, connectTo, findHeadUnits]);
 
+  const loadLibrary = useCallback(async () => {
+    if (!bridge) return;
+    setLib(await bridge.apps.list());
+  }, [bridge]);
+
+  useEffect(() => {
+    const t = setTimeout(() => void loadLibrary(), 100);
+    return () => clearTimeout(t);
+  }, [loadLibrary]);
+
+  async function downloadApp(id: string, title: string) {
+    if (!bridge) return;
+    setLibBusy(id);
+    setLibMessage(null);
+    logEvent(`Библиотека: скачиваю ${title}…`);
+    const r = await bridge.apps.download(id);
+    setLibBusy(null);
+    if (r.ok) {
+      setLibMessage({ ok: true, text: `${title}: скачано. ${r.verified ? "Контрольная сумма совпала с сайтом разработчика." : "Источник официальный, контрольной суммы у разработчика нет."}` });
+      logEvent(`Библиотека: ${title} скачано`);
+    } else {
+      setLibMessage({ ok: false, text: `${title}: ${r.error}` });
+      logEvent(`Библиотека: ${title}: ошибка загрузки`);
+    }
+    await loadLibrary();
+  }
+
+  async function installFromLibrary(file: string | null) {
+    if (!bridge || !file) return;
+    const name = await bridge.apps.choose(file);
+    if (!name) return setLibMessage({ ok: false, text: "Файл не найден в папке приложений" });
+    setApk(name);
+    await install();
+  }
+
+  async function sendBluetooth(file: string | null) {
+    if (!bridge || !file) return;
+    const r = await bridge.bluetooth.sendFile(file);
+    setLibMessage(r.ok ? { ok: true, text: "Открыт мастер Windows «Передача файлов по Bluetooth»: выберите магнитолу, затем файл (папка с ним открыта). На магнитоле подтвердите приём и нажмите на файл, чтобы установить." } : { ok: false, text: r.error ?? "Не удалось открыть мастер Bluetooth" });
+  }
+
   async function pick() {
     if (!bridge) return;
     const name = await bridge.adb.pickApk();
@@ -204,6 +248,32 @@ export default function AppsScreen() {
             ))}
           </>
         )}
+      </Card>
+
+      <H2>Библиотека приложений</H2>
+      <Card>
+        <Muted>Файлы скачиваются только с официальных сайтов разработчиков и проверяются. Хранятся в «Документы\AutoFlash\Apps». Поставить можно по Wi‑Fi (если магнитола подключена выше) или отправить по Bluetooth.</Muted>
+        {lib.map((a) => (
+          <View key={a.id} style={{ gap: 4, paddingVertical: 6, borderTopWidth: 1, borderTopColor: colors.border }}>
+            <Body style={{ fontWeight: "700" }}>{a.title}</Body>
+            <Muted>{a.purpose} {a.size}.</Muted>
+            {a.downloaded ? (
+              <>
+                <Badge tone="good" text="Скачано" />
+                <Button title="Установить на магнитолу (Wi‑Fi)" disabled={!serial || busy} onPress={() => void installFromLibrary(a.file)} />
+                <Button title="Отправить по Bluetooth" kind="ghost" onPress={() => void sendBluetooth(a.file)} />
+              </>
+            ) : (
+              <Button title={libBusy === a.id ? "Скачиваю…" : `Скачать (${a.size})`} kind="ghost" disabled={libBusy !== null} onPress={() => void downloadApp(a.id, a.title)} />
+            )}
+          </View>
+        ))}
+        {libMessage ? <Badge tone={libMessage.ok ? "good" : "bad"} text={libMessage.text} /> : null}
+        <Muted>Отправка по Bluetooth работает только на магнитолах, которые принимают файлы (чаще это неоригинальные Android-магнитолы). Заводские системы обычно не принимают.</Muted>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+          <View style={{ flexGrow: 1 }}><Button title="Открыть папку с файлами" kind="ghost" onPress={() => void bridge.apps.openFolder()} /></View>
+          <View style={{ flexGrow: 1 }}><Button title="Настройки Bluetooth Windows" kind="ghost" onPress={() => void bridge.bluetooth.openSettings()} /></View>
+        </View>
       </Card>
 
       {serial ? (

@@ -45,3 +45,23 @@ const result = await packager({
   appCopyright: "AutoFlash",
 });
 console.log("Готово:", result.join(", "));
+
+// Подпись приложения (необязательно). Нужен купленный сертификат подписи кода (OV или EV): без него Windows
+// показывает «неизвестный издатель» у скачанных копий. Укажите путь и пароль, и сборка подпишет AutoFlash.exe:
+//   $env:AUTOFLASH_SIGN_PFX="C:\путь\сертификат.pfx"; $env:AUTOFLASH_SIGN_PASSWORD="пароль"; npm run desktop:build
+const pfx = process.env.AUTOFLASH_SIGN_PFX;
+if (pfx) {
+  const exe = path.join(result[0], "AutoFlash.exe");
+  try {
+    const kits = "C:/Program Files (x86)/Windows Kits/10/bin";
+    const versions = fs.existsSync(kits) ? fs.readdirSync(kits).filter((v) => /^10\./.test(v)).sort().reverse() : [];
+    const signtool = versions.map((v) => path.join(kits, v, "x64", "signtool.exe")).find((p) => fs.existsSync(p)) ?? "signtool";
+    execSync(`"${signtool}" sign /f "${pfx}" /p "${process.env.AUTOFLASH_SIGN_PASSWORD ?? ""}" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /d "AutoFlash" "${exe}"`, { stdio: "inherit" });
+    console.log("Приложение подписано.");
+  } catch {
+    console.error("Подпись не удалась: проверьте сертификат, пароль и установленный Windows SDK (signtool).");
+    process.exitCode = 1;
+  }
+} else {
+  console.log("Подпись не настроена: приложение не подписано (см. README).");
+}

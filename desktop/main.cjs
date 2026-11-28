@@ -8,6 +8,9 @@ const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
 const netSocket = require("node:net");
 const os = require("node:os");
+const crypto = require("node:crypto");
+const { Readable } = require("node:stream");
+const { pipeline } = require("node:stream/promises");
 
 const WEB_ROOT = path.join(__dirname, "web");
 const SELFTEST = process.argv.find((a) => a.startsWith("--selftest="))?.slice("--selftest=".length);
@@ -209,6 +212,108 @@ ipcMain.handle("net:scan", async () => {
   await Promise.all(Array.from({ length: 96 }, worker));
   return found;
 });
+
+// ───────────── Библиотека приложений для магнитолы ─────────────
+// Скачиваем только из заранее заданного списка официальных источников, по https, проверяем контрольную сумму
+// (если разработчик её публикует) и признак APK-архива. Произвольные адреса интерфейс задать не может.
+const APP_CATALOG = [
+  { id: "vlc-arm64", title: "VLC для Android (64-бит, arm64)", purpose: "Видео и музыка из файлов. Для новых магнитол.", file: "VLC-Android-3.7.0-arm64-v8a.apk", url: "https://get.videolan.org/vlc-android/3.7.0/VLC-Android-3.7.0-arm64-v8a.apk", sha256Url: "https://get.videolan.org/vlc-android/3.7.0/VLC-Android-3.7.0-arm64-v8a.apk.sha256", size: "около 50 МБ" },
+  { id: "vlc-armv7", title: "VLC для Android (32-бит, armv7)", purpose: "Видео и музыка из файлов. Для старых магнитол.", file: "VLC-Android-3.7.0-armeabi-v7a.apk", url: "https://get.videolan.org/vlc-android/3.7.0/VLC-Android-3.7.0-armeabi-v7a.apk", sha256Url: "https://get.videolan.org/vlc-android/3.7.0/VLC-Android-3.7.0-armeabi-v7a.apk.sha256", size: "около 47 МБ" },
+  { id: "rustore", title: "RuStore (магазин приложений)", purpose: "Через него ставятся Яндекс Навигатор, 2ГИС, Яндекс Музыка.", file: "RuStore-mobile-1.114.0.3.apk", url: "https://static.rustore.ru/rustore-releases/stable/RuStore-mobile-1.114.0.3.apk", sha256Url: null, size: "около 58 МБ" },
+];
+
+function appsDir() {
+  const base = SELFTEST ? path.join(SELFTEST, "documents") : app.getPath("documents");
+  const dir = path.join(base, "AutoFlash", "Apps");
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/** Ищет файл в папке приложений и во вложенных папках (раньше файлы лежали по папкам версий). */
+function findApk(file) {
+  const root = appsDir();
+  const direct = path.join(root, file);
+  if (fs.existsSync(direct)) return direct;
+  for (const d of fs.readdirSync(root, { withFileTypes: true })) {
+    if (d.isDirectory()) {
+      const p = path.join(root, d.name, file);
+      if (fs.existsSync(p)) return p;
+    }
+  }
+  return null;
+}
+
+function insideAppsDir(file) {
+  const rel = path.relative(appsDir(), path.resolve(String(file)));
+  return !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
+ipcMain.handle("apps:list", () =>
+  APP_CATALOG.map((a) => {
+    const p = findApk(a.file);
+    return { id: a.id, title: a.title, purpose: a.purpose, size: a.size, hasChecksum: !!a.sha256Url, downloaded: !!p, file: p };
+  }),
+);
+
+ipcMain.handle("apps:download", async (_e, { id }) => {
+  const entry = APP_CATALOG.find((a) => a.id === id);
+  if (!entry) return { ok: false, error: "Неизвестное приложение" };
+  const target = path.join(appsDir(), entry.file);
+  const tmp = `${target}.part`;
+  try {
+    let expected = null;
+    if (entry.sha256Url) {
+      const r = await net.fetch(entry.sha256Url);
+      if (!r.ok) return { ok: false, error: `Не удалось получить контрольную сумму (${r.status})` };
+      expected = (await r.text()).trim().split(/\s+/)[0].toLowerCase();
+      if (!/^[0-9a-f]{64}$/.test(expected)) return { ok: false, error: "Контрольная сумма на сайте разработчика в неожиданном виде" };
+    }
+    const res = await net.fetch(entry.url);
+    if (!res.ok || !res.body) return { ok: false, error: `Сервер ответил ошибкой ${res.status}` };
+    const hash = crypto.createHash("sha256");
+    let bytes = 0;
+    const out = fs.createWriteStream(tmp);
+    const src = Readable.fromWeb(res.body);
+    src.on("data", (chunk) => {
+      bytes += chunk.length;
+      hash.update(chunk);
+      if (bytes > 200 * 1024 * 1024) src.destroy(new Error("Файл больше ожидаемого"));
+    });
+    await pipeline(src, out);
+    const actual = hash.digest("hex");
+    const head = Buffer.alloc(4);
+    const fd = fs.openSync(tmp, "r");
+    fs.readSync(fd, head, 0, 4, 0);
+    fs.closeSync(fd);
+    if (head[0] !== 0x50 || head[1] !== 0x4b) throw new Error("Скачанный файл не похож на приложение (.apk)");
+    if (expected && actual !== expected) throw new Error("Контрольная сумма не совпала: файл повреждён или подменён, он удалён");
+    fs.renameSync(tmp, target);
+    fs.writeFileSync(`${target}.sha256`, `${actual}  ${entry.file}\n`);
+    return { ok: true, file: target, sha256: actual, verified: !!expected };
+  } catch (err) {
+    fs.rmSync(tmp, { force: true });
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
+ipcMain.handle("apps:choose", (_e, { file }) => {
+  if (typeof file !== "string" || !insideAppsDir(file) || !file.toLowerCase().endsWith(".apk") || !fs.existsSync(file)) return null;
+  pickedApk = file;
+  return path.basename(file);
+});
+
+ipcMain.handle("apps:open-folder", () => shell.openPath(appsDir()));
+
+// Windows умеет отправлять файлы по Bluetooth на связанное устройство (мастер «Передача файлов по Bluetooth»).
+ipcMain.handle("bluetooth:send-file", (_e, { file }) => {
+  if (process.platform !== "win32") return { ok: false, error: "Только Windows" };
+  if (typeof file !== "string" || !insideAppsDir(file) || !fs.existsSync(file)) return { ok: false, error: "Файл не найден в папке приложений" };
+  shell.showItemInFolder(file);
+  execFile(path.join(process.env.SystemRoot || "C:\\Windows", "System32", "fsquirt.exe"), [], { windowsHide: false }, () => {});
+  return { ok: true };
+});
+
+ipcMain.handle("bluetooth:open-settings", () => shell.openExternal("ms-settings:bluetooth"));
 
 // ───────────── ADB: установка приложений на магнитолу по Wi-Fi ─────────────
 // Запускаем только adb.exe из поставки и только заранее разрешённые команды. Файл .apk выбирается окном системы.

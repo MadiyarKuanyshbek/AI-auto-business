@@ -12,6 +12,8 @@ Get-Process AutoFlash -ErrorAction SilentlyContinue | Stop-Process -Force
 if (Test-Path $target) { Remove-Item $target -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $target | Out-Null
 Copy-Item (Join-Path $source "*") $target -Recurse -Force
+# Снимаем пометку «файл из интернета», чтобы Windows не блокировал запуск скопированных файлов.
+Get-ChildItem $target -Recurse -File | Unblock-File -ErrorAction SilentlyContinue
 
 $exe = Join-Path $target "AutoFlash.exe"
 $shell = New-Object -ComObject WScript.Shell

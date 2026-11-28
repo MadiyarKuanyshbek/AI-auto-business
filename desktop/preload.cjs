@@ -30,6 +30,16 @@ contextBridge.exposeInMainWorld("autoflash", {
     get: () => ipcRenderer.invoke("radio:get"),
     set: (kind, on) => ipcRenderer.invoke("radio:set", { kind, on }),
   },
+  apps: {
+    list: () => ipcRenderer.invoke("apps:list"),
+    download: (id) => ipcRenderer.invoke("apps:download", { id }),
+    choose: (file) => ipcRenderer.invoke("apps:choose", { file }),
+    openFolder: () => ipcRenderer.invoke("apps:open-folder"),
+  },
+  bluetooth: {
+    sendFile: (file) => ipcRenderer.invoke("bluetooth:send-file", { file }),
+    openSettings: () => ipcRenderer.invoke("bluetooth:open-settings"),
+  },
   net: { scan: () => ipcRenderer.invoke("net:scan") },
   adb: {
     run: (args) => ipcRenderer.invoke("adb:run", args),

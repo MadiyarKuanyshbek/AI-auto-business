@@ -272,12 +272,13 @@ export default function ConnectScreen() {
           <View style={{ flexGrow: 1 }}><Button title="Искать снова" kind="ghost" onPress={() => void startRadar()} disabled={radarScanning} /></View>
           {view === "real" ? <View style={{ flexGrow: 1 }}><Button title="Найти Bluetooth" kind="ghost" onPress={() => void pickWebBle()} disabled={!ble.supported} /></View> : null}
           {view === "real" && serialSupported ? <View style={{ flexGrow: 1 }}><Button title="COM / USB" kind="ghost" onPress={() => void connectSerial()} /></View> : null}
+          {view === "real" && bridge ? <View style={{ flexGrow: 1 }}><Button title="Настройки Bluetooth Windows" kind="ghost" onPress={() => void bridge.bluetooth.openSettings()} /></View> : null}
         </View>
         {view === "real" && blips.length === 0 && !radarScanning ? (
           <View style={{ gap: 4 }}>
             <Body style={{ fontWeight: "700" }}>Пока ничего не найдено. Что сделать:</Body>
             <Muted>1. Вставьте адаптер в разъём OBD под рулём и включите зажигание.</Muted>
-            <Muted>2. Для Bluetooth-адаптера нажмите «Найти Bluetooth», для кабеля «COM / USB».</Muted>
+            <Muted>2. Bluetooth-адаптер с поддержкой BLE (например OBDLink CX): «Найти Bluetooth». Обычный дешёвый ELM327 по Bluetooth: сначала свяжите его в «Настройки Bluetooth Windows» (пин-код чаще 1234 или 0000), затем «COM / USB».</Muted>
             <Muted>3. Для Wi‑Fi адаптера подключите компьютер к его сети и нажмите «Искать снова».</Muted>
           </View>
         ) : null}

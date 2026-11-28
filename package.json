@@ -45,5 +45,10 @@
     "sim-server": "esbuild tools/sim-server.ts --bundle --platform=node --outfile=desktop/sim-server.cjs --log-level=error && node desktop/sim-server.cjs",
     "desktop:build": "node desktop/build.mjs"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "@expo/fingerprint": {
+      "minimatch": "^11.0.9"
+    }
+  }
 }

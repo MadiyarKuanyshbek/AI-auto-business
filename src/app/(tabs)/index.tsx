@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Platform, Pressable, Text, View } from "react-native";
+import { Platform, Pressable, Switch, Text, View } from "react-native";
 import { matchScannedCar } from "../../core/cars";
 import { DEMO_VEHICLES } from "../../core/sim/vehicles";
 import { useSession } from "../../session";
@@ -23,7 +23,8 @@ type Mode = "ble" | "serial" | "wifi";
 export default function ConnectScreen() {
   const router = useRouter();
   const session = useSession();
-  const { settings } = useStore().data;
+  const store = useStore();
+  const { settings } = store.data;
   const { connection } = session;
   const [mode, setMode] = useState<Mode>("ble");
   const [viewMode, setViewMode] = useState<"real" | "demo">("real");
@@ -381,6 +382,15 @@ export default function ConnectScreen() {
         <Muted>• Для записи прошивки нужен адаптер на чипе STN, например OBDLink CX или MX+. Через обычный ELM327 приложение прошивать не будет.</Muted>
       </Card>
       )}
+      <Card>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Body style={{ fontWeight: "600" }}>Определять модель по VIN через интернет</Body>
+            <Muted>Если включено, VIN автомобиля отправляется в открытую базу NHTSA (США), чтобы узнать модель. Если выключено, модель определяется только по самому VIN без интернета, данных наружу не уходит.</Muted>
+          </View>
+          <Switch testID="switch-online-vin" value={settings.onlineVin !== false} onValueChange={(v) => store.updateSettings({ onlineVin: v })} trackColor={{ true: colors.accent }} />
+        </View>
+      </Card>
       <LiveMonitor mode={view} active={focused} />
     </Screen>
   );

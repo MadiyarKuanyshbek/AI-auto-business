@@ -11,6 +11,8 @@ const MAX_SCANS_PER_VEHICLE = 5;
 type Store = {
   loaded: boolean;
   data: AppData;
+  /** Текст ошибки, если данные не удалось сохранить (например, закончилось место). */
+  saveError: string | null;
   /** Сохраняет результат сканирования: находит авто по VIN или создаёт карточку. */
   saveScan(scan: VehicleScan): VehicleRec;
   updateSettings(patch: Partial<Settings>): void;
@@ -34,6 +36,7 @@ const Ctx = createContext<Store | null>(null);
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<AppData>(EMPTY_DATA);
   const [loaded, setLoaded] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Актуальные данные для функций, которые должны вернуть результат сразу (а не после ререндера).
   const dataRef = useRef<AppData>(EMPTY_DATA);
@@ -43,8 +46,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     AsyncStorage.getItem(KEY)
-      .then((raw) => {
-        if (raw) setData(sanitizeData(JSON.parse(raw)));
+      .then(async (raw) => {
+        if (!raw) return;
+        try {
+          setData(sanitizeData(JSON.parse(raw)));
+        } catch {
+          // Данные повреждены: сохраняем копию, прежде чем новые данные её затрут.
+          await AsyncStorage.setItem(`${KEY}.corrupt`, raw).catch(() => undefined);
+          setSaveError("Сохранённые данные оказались повреждены. Копия сохранена отдельно, приложение начато с чистого листа.");
+        }
       })
       .catch(() => undefined)
       .finally(() => setLoaded(true));
@@ -55,7 +65,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!loaded) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      AsyncStorage.setItem(KEY, JSON.stringify(data)).catch(() => undefined);
+      AsyncStorage.setItem(KEY, JSON.stringify(data))
+        .then(() => setSaveError(null))
+        .catch(() => setSaveError("Не удалось сохранить данные: возможно, закончилось место. Удалите лишние фото салонов или пакеты."));
     }, 400);
   }, [data, loaded]);
 
@@ -78,6 +90,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     () => ({
       loaded,
       data,
+      saveError,
       saveScan(scan) {
         const d = dataRef.current;
         const existing = scan.vin ? d.vehicles.find((v) => v.vin === scan.vin) : undefined;
@@ -153,7 +166,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setData(EMPTY_DATA);
       },
     }),
-    [data, loaded, mutate],
+    [data, loaded, saveError, mutate],
   );
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;

@@ -51,6 +51,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const elmRef = useRef<Elm327 | null>(null);
   const kindRef = useRef<Transport["kind"] | null>(null);
   const runScanRef = useRef<() => Promise<VehicleScan | null>>(async () => null);
+  const connectSeq = useRef(0); // номер последней попытки подключения: старые попытки отменяются
   const [elmState, setElmState] = useState<Elm327 | null>(null);
 
   // После перезапуска показываем последнее сохранённое сканирование (без подключения к авто).
@@ -71,6 +72,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [showDemo, store.data.packages]);
 
   const disconnect = useCallback(async () => {
+    connectSeq.current++;
     const elm = elmRef.current;
     elmRef.current = null;
     setElmState(null);
@@ -82,11 +84,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const connect = useCallback(
     async (transport: Transport) => {
       await disconnect();
+      const seq = ++connectSeq.current;
       setConnection({ status: "connecting", label: transport.label });
       setScanError(null);
       const elm = new Elm327(transport);
       try {
         await elm.open();
+        if (seq !== connectSeq.current) {
+          // Пока открывали канал, пользователь запустил другое подключение: этот канал закрываем.
+          await elm.close().catch(() => undefined);
+          return false;
+        }
         transport.onClose(() => {
           if (elmRef.current === elm) {
             elmRef.current = null;
@@ -104,7 +112,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return true;
       } catch (e) {
         await elm.close().catch(() => undefined);
-        setConnection({ status: "error", message: e instanceof Error ? e.message : "Не удалось подключиться" });
+        if (seq === connectSeq.current) setConnection({ status: "error", message: e instanceof Error ? e.message : "Не удалось подключиться" });
         return false;
       }
     },
@@ -123,7 +131,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setScanError(null);
     setProgress({ step: "Подготовка", fraction: 0 });
     try {
-      const result = await scanVehicle(elm, { onProgress: (step, fraction) => setProgress({ step, fraction }) });
+      const result = await scanVehicle(elm, { online: store.data.settings.onlineVin !== false, onProgress: (step, fraction) => setProgress({ step, fraction }) });
+      if (elmRef.current !== elm) return null; // отключились во время определения: старый результат не показываем
       setScan(result);
       setLiveScan(result);
       store.saveScan(result);
@@ -133,7 +142,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
       return result;
     } catch (e) {
-      setScanError(e instanceof Error ? e.message : "Не удалось просканировать авто");
+      if (elmRef.current === elm) setScanError(e instanceof Error ? e.message : "Не удалось просканировать авто");
       return null;
     } finally {
       setScanning(false);
@@ -152,6 +161,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setScanError(null);
     try {
       const extra = await deepScan(elm, base.ecus, (step, fraction) => setProgress({ step, fraction }));
+      if (elmRef.current !== elm) return 0;
       if (extra.length > 0) {
         const merged: VehicleScan = { ...base, ecus: [...base.ecus, ...extra], scannedAt: Date.now() };
         setScan(merged);

@@ -28,13 +28,22 @@ function registerAppProtocol() {
     let rel = decodeURIComponent(url.pathname);
     if (rel === "/" || rel === "") rel = "/index.html";
     let file = path.normalize(path.join(WEB_ROOT, rel));
-    // Защита от выхода за пределы папки интерфейса.
-    if (!file.startsWith(WEB_ROOT)) return new Response("Forbidden", { status: 403 });
+    // Защита от выхода за пределы папки интерфейса (проверка по относительному пути, а не по началу строки).
+    const relative = path.relative(WEB_ROOT, file);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) return new Response("Forbidden", { status: 403 });
     if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) {
       // Маршруты приложения (/vehicle, /tune…) → единая страница (SPA).
       file = path.join(WEB_ROOT, "index.html");
     }
-    return net.fetch(pathToFileURL(file).toString());
+    return net.fetch(pathToFileURL(file).toString()).then((res) => {
+      // Политика безопасности: только свои скрипты, связь только со своим приложением и базой VIN (NHTSA).
+      const headers = new Headers(res.headers);
+      headers.set(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://vpic.nhtsa.dot.gov; object-src 'none'; base-uri 'none'; form-action 'none'",
+      );
+      return new Response(res.body, { status: res.status, headers });
+    });
   });
 }
 
@@ -62,6 +71,10 @@ ipcMain.handle("tcp:connect", (_e, { host, port }) =>
     if (typeof host !== "string" || !/^[\w.\-:]+$/.test(host) || !Number.isInteger(port) || port < 1 || port > 65535) {
       return reject(new Error("Некорректный адрес адаптера"));
     }
+    // Wi-Fi адаптеры OBD всегда в локальной сети: подключения в интернет отклоняем.
+    const m = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(host);
+    const local = m && (m[1] === "10" || m[1] === "127" || (m[1] === "192" && m[2] === "168") || (m[1] === "172" && +m[2] >= 16 && +m[2] <= 31) || (m[1] === "169" && m[2] === "254"));
+    if (!local) return reject(new Error("Адаптер должен быть в локальной сети (адрес вида 192.168.x.x)"));
     const id = nextSocketId++;
     const socket = netSocket.createConnection({ host, port });
     socket.setNoDelay(true);

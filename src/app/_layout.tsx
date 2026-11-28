@@ -1,16 +1,38 @@
 import { Stack, type ErrorBoundaryProps } from "expo-router";
+import { useEffect } from "react";
 import { Pressable, Text, View } from "react-native";
+import { logEvent } from "../liveLog";
+import { useStore } from "../storage/store";
 import { StatusBar } from "expo-status-bar";
 import { SessionProvider } from "../session";
 import { StoreProvider } from "../storage/store";
 import { DesktopChooser } from "../ui/DesktopChooser";
 import { colors } from "../ui/kit";
 
+/** Полоса сверху, если данные не удаётся сохранить: иначе пользователь потеряет их молча. */
+function SaveBanner() {
+  const { saveError } = useStore();
+  if (!saveError) return null;
+  return (
+    <View style={{ backgroundColor: "#7F1D1D", padding: 10 }}>
+      <Text style={{ color: "#fff", fontWeight: "700", textAlign: "center" }}>{saveError}</Text>
+    </View>
+  );
+}
+
 export default function RootLayout() {
+  // Необработанные ошибки не пропадают молча: они попадают в журнал событий на первой вкладке.
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.addEventListener) return;
+    const onRejection = (e: PromiseRejectionEvent) => logEvent(`Ошибка: ${e.reason instanceof Error ? e.reason.message : String(e.reason)}`);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => window.removeEventListener("unhandledrejection", onRejection);
+  }, []);
   return (
     <StoreProvider>
       <SessionProvider>
         <StatusBar style="light" />
+        <SaveBanner />
         <DesktopChooser />
         <Stack
           screenOptions={{

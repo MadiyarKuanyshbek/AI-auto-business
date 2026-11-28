@@ -111,6 +111,12 @@ async function run(win, outDir, app) {
     await js("window.__rx = 0; window.autoflash.tcp.onData(() => { window.__rx++; }); null");
     step("мост рабочего стола подключён", await js("!!window.autoflash && window.autoflash.desktop === true"));
     step("интерфейс загружен", (await text()).includes("AutoFlash"));
+    const csp = await js(`fetch(location.href).then((r) => r.headers.get("content-security-policy"))`);
+    step("безопасность: задана политика CSP (только свои скрипты)", typeof csp === "string" && csp.includes("default-src 'self'") && csp.includes("script-src 'self'"), String(csp).slice(0, 80));
+    const tcpGuard = await js(`window.autoflash.tcp.connect("8.8.8.8", 53).then(() => "connected", (e) => String(e.message))`);
+    step("безопасность: подключение к адресам в интернете запрещено (только локальная сеть)", /локальной сети/.test(String(tcpGuard)), String(tcpGuard).slice(0, 100));
+    step("настройка: определение модели по VIN через интернет можно выключить", (await text()).includes("Определять модель по VIN через интернет"));
+
     await shot("01-connect");
 
     // ── Меню слева: два пункта по порядку ──

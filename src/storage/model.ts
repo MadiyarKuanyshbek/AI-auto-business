@@ -17,9 +17,11 @@ export type Settings = {
   hadRealScan: boolean;
   /** Дата последней автоматической резервной копии (ГГГГ-ММ-ДД). */
   lastBackupDay: string;
+  /** Определять модель по VIN через интернет (VIN отправляется в базу NHTSA, США). */
+  onlineVin: boolean;
 };
 
-export const DEFAULT_SETTINGS: Settings = { showDemo: true, hadRealScan: false, lastBackupDay: "" };
+export const DEFAULT_SETTINGS: Settings = { showDemo: true, hadRealScan: false, lastBackupDay: "", onlineVin: true };
 
 /** Что и когда установлено в блок автомобиля (по VIN) — по этому находим доступные обновления. */
 export type InstallRecord = { vin: string; ecuTxId: string; packageId: string; version: string; at: number; softwareAfter?: string };
@@ -62,6 +64,7 @@ export function sanitizeData(raw: unknown): AppData {
       showDemo: typeof st.showDemo === "boolean" ? st.showDemo : true,
       hadRealScan: st.hadRealScan === true,
       lastBackupDay: typeof st.lastBackupDay === "string" ? st.lastBackupDay : "",
+      onlineVin: st.onlineVin !== false,
     },
     packages: Array.isArray(r.packages) ? r.packages.filter((x) => x && typeof x === "object") : [],
     installs: arr<InstallRecord>(r.installs),

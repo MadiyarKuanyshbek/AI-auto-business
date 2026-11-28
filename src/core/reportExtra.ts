@@ -1,5 +1,5 @@
 import { describeDtc } from "./dtc";
-import { reportTitle } from "./report";
+import { reportTitle, signatureBlockHtml } from "./report";
 import type { VehicleScan } from "./scanner";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -72,6 +72,7 @@ export function buildComparisonHtml(before: VehicleScan, after: VehicleScan, opt
 <p>Осталось:</p><ul>${list(diff.unchangedDtcs, "")}</ul>
 <p>Напряжение бортсети: ${diff.voltage.before ?? "—"} В → ${diff.voltage.after ?? "—"} В</p>
 <p class="muted">Сравнение построено по результатам диагностического чтения (OBD-II/UDS).</p>
+${signatureBlockHtml(opts.workshop || "AutoFlash")}
 </body></html>`;
 }
 

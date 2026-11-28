@@ -11,6 +11,11 @@ export function logEvent(text: string, real = true): void {
   listeners.forEach((l) => l());
 }
 
+/** Текущие события без подписки (для сохранения журнала в файл). */
+export function liveSnapshot(): { events: LiveEvent[] } {
+  return { events };
+}
+
 export function useLiveEvents(): LiveEvent[] {
   return useSyncExternalStore(
     (cb) => {

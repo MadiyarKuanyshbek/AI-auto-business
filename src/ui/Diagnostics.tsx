@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Platform, Share, View } from "react-native";
 import { analyzeScan, identifyFamily } from "../core/catalog";
-import { clearDtcs } from "../core/obd";
+import { clearDtcs, readFreezeFrame, readReadiness, readinessSummary, type FreezeFrame, type Readiness } from "../core/obd";
 import { buildReportHtml, buildReportText } from "../core/report";
 import { buildComparisonHtml, buildComparisonText } from "../core/reportExtra";
 import { IDENT_DIDS } from "../core/uds";
@@ -9,6 +9,7 @@ import { useSession } from "../session";
 import { useStore } from "../storage/store";
 import { Badge, Body, Button, Card, H2, Muted, Progress, Row, colors } from "./kit";
 import { LivePanel } from "./LivePanel";
+import { saveReportPdf } from "./files";
 import { printHtml } from "./print";
 
 /** Подробная диагностика подключённого авто: блоки, ошибки, живые данные, отчёты. */
@@ -17,6 +18,9 @@ export function Diagnostics() {
   const store = useStore();
   const [confirmClear, setConfirmClear] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [readiness, setReadiness] = useState<Readiness | null>(null);
+  const [freeze, setFreeze] = useState<{ ff: FreezeFrame | null } | null>(null);
+  const [busyCheck, setBusyCheck] = useState(false);
   if (!scan) return null;
 
   const advisories = analyzeScan(scan);
@@ -33,6 +37,34 @@ export function Diagnostics() {
       setMessage(e instanceof Error ? e.message : "Не удалось сбросить ошибки");
     }
   }
+
+  async function checkReadiness() {
+    if (!elm) return;
+    setBusyCheck(true);
+    try {
+      setReadiness(await readReadiness(elm));
+      setMessage(null);
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Не удалось прочитать готовность систем");
+    } finally {
+      setBusyCheck(false);
+    }
+  }
+
+  async function loadFreeze() {
+    if (!elm) return;
+    setBusyCheck(true);
+    try {
+      setFreeze({ ff: await readFreezeFrame(elm) });
+      setMessage(null);
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Не удалось прочитать замороженный кадр");
+    } finally {
+      setBusyCheck(false);
+    }
+  }
+
+  const sum = readiness ? readinessSummary(readiness) : null;
 
   return (
     <View style={{ gap: 12 }}>
@@ -106,22 +138,62 @@ export function Diagnostics() {
         <Muted key={i}>• {w}</Muted>
       ))}
 
+      <H2>Готовность к техосмотру</H2>
+      <Card>
+        <Muted>Показывает, горит ли лампа Check Engine и закончили ли проверку системы двигателя (катализатор, датчик кислорода, EVAP и другие). Если проверки не завершены, техосмотр могут не принять.</Muted>
+        <Button title="Проверить готовность систем" kind="ghost" onPress={() => void checkReadiness()} loading={busyCheck} disabled={!elm} />
+        {readiness && sum ? (
+          <>
+            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+              <Badge tone={readiness.milOn ? "bad" : "good"} text={readiness.milOn ? "Лампа Check Engine горит" : "Лампа не горит"} />
+              <Badge text={`Кодов ошибок: ${readiness.dtcCount}`} />
+              <Badge tone={sum.notReady.length === 0 ? "good" : "warn"} text={`Готовы: ${sum.ready} из ${sum.supported}`} />
+            </View>
+            {readiness.monitors.filter((m) => m.supported).map((m) => (
+              <Row key={m.name} label={m.name} value={m.complete ? "готово" : "не завершено"} />
+            ))}
+            {sum.notReady.length ? <Muted>Не завершены: {sum.notReady.join(", ")}. Обычно нужно проехать несколько циклов движения после сброса ошибок.</Muted> : <Muted>Все поддерживаемые системы проверены.</Muted>}
+          </>
+        ) : null}
+      </Card>
+
+      <H2>Замороженный кадр</H2>
+      <Card>
+        <Muted>Двигатель запоминает режим работы в момент первой ошибки: обороты, температуру, нагрузку. Это помогает понять причину.</Muted>
+        <Button title="Прочитать замороженный кадр" kind="ghost" onPress={() => void loadFreeze()} loading={busyCheck} disabled={!elm} />
+        {freeze ? (
+          freeze.ff ? (
+            <>
+              <Badge tone="warn" text={`Код ошибки: ${freeze.ff.dtc}`} />
+              {freeze.ff.values.map((v) => (
+                <Row key={v.pid} label={v.name} value={`${Number.isInteger(v.value) ? v.value : v.value.toFixed(1)} ${v.unit}`} />
+              ))}
+            </>
+          ) : (
+            <Muted>Замороженного кадра нет: двигатель не запомнил ошибку (или после сброса ошибок кадр стёрт).</Muted>
+          )
+        ) : null}
+      </Card>
+
       <H2>Данные в реальном времени</H2>
       <LivePanel />
 
       <H2>Отчёты</H2>
       <Button title="Отправить отчёт о сканировании" kind="ghost" onPress={() => void Share.share({ message: buildReportText(scan) })} />
       {Platform.OS === "web" ? (
-        <Button title="Распечатать / сохранить в PDF" kind="ghost" onPress={() => void printHtml(buildReportHtml(scan, "AutoFlash"), buildReportText(scan))} />
+        <>
+          <Button title="Сохранить отчёт в PDF (с подписями)" onPress={() => void saveReportPdf(buildReportHtml(scan, "AutoFlash"), buildReportText(scan), `Отчёт ${scan.vin ?? "авто"}`).then((f) => setMessage(f ? `PDF сохранён: ${f}` : null))} />
+          <Button title="Распечатать" kind="ghost" onPress={() => void printHtml(buildReportHtml(scan, "AutoFlash"), buildReportText(scan))} />
+        </>
       ) : null}
       {vehicle && vehicle.scans.length >= 2 ? (
         <Button
-          title="Отчёт «до и после» (первое и последнее сканирование)"
+          title="Отчёт «до и после» в PDF (первое и последнее сканирование)"
           kind="ghost"
           onPress={() => {
             const first = vehicle.scans[0];
             const last = vehicle.scans[vehicle.scans.length - 1];
-            void printHtml(buildComparisonHtml(first, last, { workshop: "AutoFlash" }), buildComparisonText(first, last));
+            void saveReportPdf(buildComparisonHtml(first, last, { workshop: "AutoFlash" }), buildComparisonText(first, last), `До и после ${scan.vin ?? "авто"}`).then((f) => setMessage(f ? `PDF сохранён: ${f}` : null));
           }}
         />
       ) : (

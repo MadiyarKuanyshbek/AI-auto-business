@@ -4,6 +4,7 @@ import type { SimVehicle } from "./simulator";
 // но не относятся к конкретным авто. Нужны, чтобы показать работу приложения без машины.
 
 const COMMON_PIDS = {
+  0x01: [0x82, 0x07, 0xe5, 0x04], // лампа горит, 2 кода; не готова система EVAP
   0x05: [0x5f], // ОЖ 55 °C
   0x0b: [0x23], // MAP 35 кПа
   0x0c: [0x0c, 0x80], // 800 об/мин
@@ -21,7 +22,7 @@ export const DEMO_VEHICLES: SimVehicle[] = [
     stn: true,
     vin: "WVWZZZ1KZBW123456",
     voltage: 12.7,
-    pids: { ...COMMON_PIDS, 0x04: [0x3a], 0x10: [0x04, 0xd2] },
+    pids: { ...COMMON_PIDS, 0x01: [0x81, 0x0f, 0xe0, 0x40], 0x04: [0x3a], 0x10: [0x04, 0xd2] },
     calibrationIds: ["03L906018FQ 0258"],
     cvn: ["A1B2C3D4"],
     ecuName: "ECM-EngineControl",
@@ -32,6 +33,7 @@ export const DEMO_VEHICLES: SimVehicle[] = [
         rxId: "7E8",
         obd: true,
         dtcs: ["P0299"],
+        freeze: { dtc: "P0299", pids: { 0x04: [0x66], 0x05: [0x70], 0x0b: [0x64], 0x0c: [0x1a, 0xf8], 0x0d: [0x3c], 0x0f: [0x41], 0x11: [0x80] } },
         dids: {
           0xf187: "03L906018FQ",
           0xf189: "0258",
@@ -57,7 +59,9 @@ export const DEMO_VEHICLES: SimVehicle[] = [
         name: "Коробка передач (DSG)",
         txId: "7E1",
         rxId: "7E9",
-        dids: { 0xf187: "02E300057Q", 0xf189: "0721", 0xf18a: "VW", 0xf190: "WVWZZZ1KZBW123456", 0xf197: "DQ250 Mechatronic" },
+        dids: { 0xf187: "02E300057Q", 0xf189: "0721", 0xf18a: "VW", 0xf190: "WVWZZZ1KZBW123456", 0xf197: "DQ250 Mechatronic", 0x0600: [0x01, 0x00, 0x20, 0x00] },
+        // Настройки коробки можно менять: для демонстрации кодирования
+        coding: { writableDids: [0x0600], seedHex: "DEADBEEF", maskHex: "21" },
       },
       {
         name: "ABS/ESP",
@@ -139,6 +143,7 @@ export const DEMO_VEHICLES: SimVehicle[] = [
         rxId: "7E8",
         obd: true,
         dtcs: ["P0420", "P0171"],
+        freeze: { dtc: "P0420", pids: { 0x04: [0x4d], 0x05: [0x78], 0x0b: [0x32], 0x0c: [0x0f, 0xa0], 0x0d: [0x50], 0x0f: [0x45], 0x11: [0x40] } },
         dids: {
           0xf187: "89663-06B50",
           0xf188: "8966306B50",

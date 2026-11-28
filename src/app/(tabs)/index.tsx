@@ -26,6 +26,7 @@ export default function ConnectScreen() {
   const session = useSession();
   const store = useStore();
   const { settings } = store.data;
+  const [j2534, setJ2534] = useState<{ name: string; vendor: string }[]>([]);
   const { connection } = session;
   const [mode, setMode] = useState<Mode>("ble");
   const [viewMode, setViewMode] = useState<"real" | "demo">("real");
@@ -175,6 +176,11 @@ export default function ConnectScreen() {
     const t = setTimeout(() => setSheet({ id: "connected", kind: "car", label: vehicleTitle(liveScan), sub: "Подключено", connected: true }), 400);
     return () => clearTimeout(t);
   }, [liveScan, connection, focused]);
+
+  useEffect(() => {
+    const t = setTimeout(() => void desktopBridge()?.j2534.list().then(setJ2534), 600);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => void startRadar(), 300);
@@ -401,6 +407,7 @@ export default function ConnectScreen() {
           <Muted>USB-адаптер OBD (COM): диагностика и прошивка. Магнитола по USB-кабелю с отладкой: приложения и русификация. Флешка: файл обновления для штатной магнитолы.</Muted>
           <Body style={{ fontWeight: "700" }}>🔧 OBD-сканер</Body>
           <Muted>Адаптеры на чипах ELM327 и STN поддерживаются (STN нужен для записи). Профессиональные сканеры с интерфейсом J2534 (Autel, Launch, Tactrix) пока не поддерживаются.</Muted>
+          {j2534.length > 0 ? <Muted>В Windows установлены драйверы J2534: {j2534.map((d) => d.name).join(", ")}. Подключиться к ним приложение пока не может: драйверы чаще 32-разрядные и нужен отдельный посредник.</Muted> : null}
         </Card>
       ) : null}
       <Card>

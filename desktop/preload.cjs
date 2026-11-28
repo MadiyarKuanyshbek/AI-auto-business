@@ -25,6 +25,17 @@ contextBridge.exposeInMainWorld("autoflash", {
   backup: {
     save: (json, name) => ipcRenderer.invoke("backup:save", { json, name }),
     openFolder: () => ipcRenderer.invoke("backup:open-folder"),
+    saveAs: (json) => ipcRenderer.invoke("backup:save-as", { json }),
+    load: () => ipcRenderer.invoke("backup:load"),
+    getMirror: () => ipcRenderer.invoke("backup:get-mirror"),
+    chooseMirror: () => ipcRenderer.invoke("backup:choose-mirror"),
+    clearMirror: () => ipcRenderer.invoke("backup:clear-mirror"),
+  },
+  files: {
+    savePdf: (html, name) => ipcRenderer.invoke("pdf:save", { html, name }),
+    reveal: (file) => ipcRenderer.invoke("file:reveal", { file }),
+    exportLog: (text) => ipcRenderer.invoke("log:export", { text }),
+    saveText: (text, name, ext) => ipcRenderer.invoke("file:save-text", { text, name, ext }),
   },
   radio: {
     get: () => ipcRenderer.invoke("radio:get"),
@@ -36,6 +47,11 @@ contextBridge.exposeInMainWorld("autoflash", {
     choose: (file) => ipcRenderer.invoke("apps:choose", { file }),
     openFolder: () => ipcRenderer.invoke("apps:open-folder"),
   },
+  update: {
+    check: () => ipcRenderer.invoke("update:check"),
+    open: (url) => ipcRenderer.invoke("update:open", { url }),
+  },
+  j2534: { list: () => ipcRenderer.invoke("j2534:list") },
   usb: {
     drives: () => ipcRenderer.invoke("usb:drives"),
     pickFile: () => ipcRenderer.invoke("usb:pick-file"),

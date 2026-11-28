@@ -32,6 +32,9 @@ export type CarMedia = { id: string; kind: "image" | "link"; title: string; url:
 /** Файл интерфейса, подготовленный заранее (без адаптера): ставится при подключении к этому автомобилю. */
 export type QueueItem = { id: string; carId: string; carTitle: string; themeId: string; fileName: string; title: string; at: number };
 
+/** Запись о кодировании блока: что было и что стало (по ней можно вернуть прежние настройки). */
+export type CodingRecord = { id: string; vin: string; ecuName: string; txId: string; did: number; pkgId: string; pkgTitle: string; before: number[]; after: number[]; at: number };
+
 export type AppData = {
   settings: Settings;
   /** Загруженные и созданные пакеты прошивки (сырой JSON; проверяются при чтении). */
@@ -42,9 +45,11 @@ export type AppData = {
   media: Record<string, CarMedia[]>;
   /** Очередь установки: подготовлено заранее, ждёт подключения к автомобилю. */
   queue: QueueItem[];
+  /** Журнал кодирования блоков. */
+  coding: CodingRecord[];
 };
 
-export const EMPTY_DATA: AppData = { settings: DEFAULT_SETTINGS, packages: [], installs: [], vehicles: [], media: {}, queue: [] };
+export const EMPTY_DATA: AppData = { settings: DEFAULT_SETTINGS, packages: [], installs: [], vehicles: [], media: {}, queue: [], coding: [] };
 
 export const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
@@ -71,6 +76,7 @@ export function sanitizeData(raw: unknown): AppData {
     vehicles: arr<VehicleRec>(r.vehicles).map((v) => ({ ...v, scans: Array.isArray(v.scans) ? v.scans : [] })),
     media,
     queue: arr<QueueItem>(r.queue).filter((q) => typeof q.carId === "string" && typeof q.fileName === "string"),
+    coding: arr<CodingRecord>(r.coding).filter((c) => typeof c.txId === "string" && Array.isArray(c.before) && Array.isArray(c.after)),
   };
 }
 

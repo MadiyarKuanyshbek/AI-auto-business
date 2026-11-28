@@ -29,6 +29,12 @@ export function buildReportText(scan: VehicleScan): string {
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
+/** Блок подписей внизу отчёта: мастер, клиент, дата. */
+export function signatureBlockHtml(workshop = "AutoFlash"): string {
+  const line = '<div style="border-bottom:1px solid #111;height:32px"></div>';
+  return `<div style="margin-top:36px;display:flex;gap:40px;font-size:13px"><div style="flex:1">Мастер (${esc(workshop)})${line}<span class="muted">подпись, расшифровка</span></div><div style="flex:1">Клиент${line}<span class="muted">подпись, расшифровка</span></div><div style="width:120px">Дата${line}</div></div>`;
+}
+
 /** Страница отчёта для печати или сохранения в PDF (клиенту в руки). */
 export function buildReportHtml(scan: VehicleScan, workshop = "AutoFlash"): string {
   const advisories = analyzeScan(scan);
@@ -50,5 +56,6 @@ export function buildReportHtml(scan: VehicleScan, workshop = "AutoFlash"): stri
 <h2>Ошибки</h2><ul>${dtcs}</ul>
 ${advisories.length ? `<h2>Замечания</h2><ul>${advisories.map((a) => `<li>${esc(a.text)}</li>`).join("")}</ul>` : ""}
 <p class="muted">Данные считаны по стандартным диагностическим запросам (OBD-II/UDS), без изменения содержимого блоков.</p>
+${signatureBlockHtml(workshop)}
 </body></html>`;
 }

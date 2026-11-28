@@ -13,6 +13,7 @@ export default function CarsLayout() {
     >
       <Stack.Screen name="index" options={{ title: "Авто и прошивки" }} />
       <Stack.Screen name="install" options={{ title: "Установка прошивки" }} />
+      <Stack.Screen name="coding" options={{ title: "Кодирование блока" }} />
       <Stack.Screen name="task" options={{ title: "Как это сделать" }} />
       <Stack.Screen name="apps" options={{ title: "Приложения и русификация" }} />
       <Stack.Screen name="builder" options={{ title: "Конструктор пакета" }} />

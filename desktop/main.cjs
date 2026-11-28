@@ -119,6 +119,54 @@ function backupDir() {
   return dir;
 }
 
+// Настройки приложения хранятся рядом с данными (папка пользователя).
+function configFile() {
+  return path.join(app.getPath("userData"), "config.json");
+}
+function readConfig() {
+  try {
+    return JSON.parse(fs.readFileSync(configFile(), "utf8"));
+  } catch {
+    return {};
+  }
+}
+function writeConfig(patch) {
+  fs.mkdirSync(path.dirname(configFile()), { recursive: true });
+  fs.writeFileSync(configFile(), JSON.stringify({ ...readConfig(), ...patch }, null, 2), "utf8");
+}
+
+ipcMain.handle("backup:get-mirror", () => readConfig().mirrorDir || null);
+
+// Дополнительная папка для копий: обычно папка облака (OneDrive, Google Drive, Dropbox) или сетевой диск.
+ipcMain.handle("backup:choose-mirror", async () => {
+  const r = await dialog.showOpenDialog(win, { title: "Выберите папку для копий (например, OneDrive)", properties: ["openDirectory", "createDirectory"] });
+  if (r.canceled || !r.filePaths[0]) return null;
+  writeConfig({ mirrorDir: r.filePaths[0] });
+  return r.filePaths[0];
+});
+
+ipcMain.handle("backup:clear-mirror", () => {
+  writeConfig({ mirrorDir: null });
+  return true;
+});
+
+ipcMain.handle("backup:save-as", async (_e, { json }) => {
+  if (typeof json !== "string" || json.length > 50 * 1024 * 1024) throw new Error("Некорректные данные копии");
+  const day = new Date().toISOString().slice(0, 10);
+  const r = await dialog.showSaveDialog(win, { title: "Сохранить копию данных", defaultPath: `autoflash-${day}.json`, filters: [{ name: "Копия AutoFlash", extensions: ["json"] }] });
+  if (r.canceled || !r.filePath) return null;
+  fs.writeFileSync(r.filePath, json, "utf8");
+  return r.filePath;
+});
+
+ipcMain.handle("backup:load", async () => {
+  const r = await dialog.showOpenDialog(win, { title: "Загрузить копию данных", properties: ["openFile"], filters: [{ name: "Копия AutoFlash", extensions: ["json"] }] });
+  if (r.canceled || !r.filePaths[0]) return null;
+  const st = fs.statSync(r.filePaths[0]);
+  if (st.size > 50 * 1024 * 1024) throw new Error("Файл слишком большой");
+  return fs.readFileSync(r.filePaths[0], "utf8");
+});
+
 ipcMain.handle("backup:save", (_e, { json, name }) => {
   if (typeof json !== "string" || json.length > 50 * 1024 * 1024) throw new Error("Некорректные данные копии");
   const dir = backupDir();
@@ -126,6 +174,16 @@ ipcMain.handle("backup:save", (_e, { json, name }) => {
   const safeName = typeof name === "string" && /^[\w.\-]+$/.test(name) ? name : `autoflash-${day}.json`;
   const file = path.join(dir, safeName);
   fs.writeFileSync(file, json, "utf8");
+  // Дополнительная копия в выбранную папку (облако или другой диск): сбой записи туда не ломает основную копию.
+  const mirror = readConfig().mirrorDir;
+  if (mirror) {
+    try {
+      fs.mkdirSync(mirror, { recursive: true });
+      fs.copyFileSync(file, path.join(mirror, safeName));
+    } catch {
+      // папка недоступна (нет сети, диск отключён): основная копия уже записана
+    }
+  }
   // Храним последние 30 копий.
   const files = fs.readdirSync(dir).filter((f) => /^autoflash-.*\.json$/.test(f)).sort();
   for (const old of files.slice(0, Math.max(0, files.length - 30))) fs.rmSync(path.join(dir, old), { force: true });
@@ -479,6 +537,118 @@ app.on("quit", () => {
     const exe = adbPath();
     if (fs.existsSync(exe)) execFile(exe, ["kill-server"], { windowsHide: true }, () => {});
   } catch {}
+});
+
+// ───────────── Проверка обновлений приложения (по запросу пользователя) ─────────────
+// Обращается к открытой странице релизов на GitHub. Ничего не скачивает и не устанавливает само: только сообщает о новой версии.
+const UPDATE_REPO = "MadiyarKuanyshbek/AI-auto-business";
+
+function compareVersions(a, b) {
+  const pa = String(a).split(".").map((x) => parseInt(x, 10) || 0);
+  const pb = String(b).split(".").map((x) => parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
+ipcMain.handle("update:check", async () => {
+  const current = app.getVersion();
+  try {
+    const r = await net.fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, { headers: { Accept: "application/vnd.github+json", "User-Agent": "AutoFlash-update-check" } });
+    if (r.status === 404) return { ok: true, current, latest: null };
+    if (!r.ok) return { ok: false, current, error: `GitHub ответил ошибкой ${r.status}` };
+    const j = await r.json();
+    const latest = String(j.tag_name || "").replace(/^v/i, "");
+    const asset = (j.assets || []).find((a) => /AutoFlash-Setup-.*\.exe$/i.test(a.name));
+    return { ok: true, current, latest, newer: !!latest && compareVersions(latest, current) > 0, url: String(j.html_url || ""), downloadUrl: asset ? String(asset.browser_download_url) : null, notes: String(j.body || "").slice(0, 800) };
+  } catch {
+    return { ok: false, current, error: "Нет интернета или GitHub недоступен" };
+  }
+});
+
+ipcMain.handle("update:open", (_e, { url }) => {
+  if (typeof url !== "string" || !url.startsWith(`https://github.com/${UPDATE_REPO}/`)) return false;
+  void shell.openExternal(url);
+  return true;
+});
+
+// ───────────── J2534: поиск установленных профессиональных сканеров (только список) ─────────────
+// Драйверы J2534 (Autel, Tactrix, Drew Technologies и др.) регистрируются в реестре Windows. Работать с ними приложение пока не умеет:
+// драйверы чаще 32-разрядные и требуют отдельного посредника. Здесь только определяем, что они стоят в системе.
+ipcMain.handle("j2534:list", () =>
+  new Promise((resolve) => {
+    if (process.platform !== "win32") return resolve([]);
+    const script = "$out=@(); foreach ($base in 'HKLM:\\SOFTWARE\\PassThruSupport.04.04','HKLM:\\SOFTWARE\\WOW6432Node\\PassThruSupport.04.04') { if (Test-Path $base) { foreach ($k in Get-ChildItem $base) { $p=Get-ItemProperty $k.PSPath; if ($p.Name) { $out += [pscustomobject]@{ name=[string]$p.Name; vendor=[string]$p.Vendor } } } } }; ConvertTo-Json -Compress -InputObject @($out)";
+    const enc = Buffer.from(script, "utf16le").toString("base64");
+    execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", enc], { timeout: 15000, windowsHide: true, encoding: "utf8" }, (err, stdout) => {
+      if (err || !stdout.trim()) return resolve([]);
+      try {
+        const raw = JSON.parse(stdout);
+        const arr = Array.isArray(raw) ? raw : [raw];
+        const seen = new Set();
+        resolve(arr.filter((d) => d && d.name && !seen.has(d.name) && seen.add(d.name)).map((d) => ({ name: String(d.name), vendor: String(d.vendor || "") })));
+      } catch {
+        resolve([]);
+      }
+    });
+  }),
+);
+
+// ───────────── PDF-отчёты и журнал для поддержки ─────────────
+function userDocsDir(sub) {
+  const base = SELFTEST ? path.join(SELFTEST, "documents") : app.getPath("documents");
+  const dir = path.join(base, "AutoFlash", sub);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function safeFileName(name, ext) {
+  const base = String(name || "report").replace(/[^\w.\-а-яА-ЯёЁ ]+/g, "_").slice(0, 60).trim() || "report";
+  return `${base}.${ext}`;
+}
+
+// Отчёт рисуется в скрытом окне без доступа к системе и сохраняется как PDF.
+ipcMain.handle("pdf:save", async (_e, { html, name }) => {
+  if (typeof html !== "string" || html.length > 20 * 1024 * 1024) throw new Error("Некорректный отчёт");
+  const pdfWin = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, javascript: false } });
+  try {
+    await pdfWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    const data = await pdfWin.webContents.printToPDF({ pageSize: "A4", printBackground: true });
+    const day = new Date().toISOString().slice(0, 10);
+    const file = path.join(userDocsDir("Reports"), safeFileName(`${name || "report"}-${day}-${Date.now().toString(36)}`, "pdf"));
+    fs.writeFileSync(file, data);
+    return file;
+  } finally {
+    pdfWin.destroy();
+  }
+});
+
+ipcMain.handle("file:reveal", (_e, { file }) => {
+  const docs = userDocsDir("");
+  const rel = path.relative(docs, path.resolve(String(file)));
+  if (rel.startsWith("..") || path.isAbsolute(rel)) return false;
+  shell.showItemInFolder(path.resolve(String(file)));
+  return true;
+});
+
+ipcMain.handle("file:save-text", (_e, { text, name, ext }) => {
+  if (typeof text !== "string" || text.length > 20 * 1024 * 1024) throw new Error("Некорректные данные");
+  if (!["csv", "txt"].includes(ext)) throw new Error("Некорректный тип файла");
+  const day = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  const file = path.join(userDocsDir("Reports"), safeFileName(`${name || "data"}-${day}`, ext));
+  fs.writeFileSync(file, ext === "csv" ? `\uFEFF${text}` : text, "utf8"); // BOM: Excel правильно читает русские буквы
+  return file;
+});
+
+ipcMain.handle("log:export", (_e, { text }) => {
+  if (typeof text !== "string" || text.length > 20 * 1024 * 1024) throw new Error("Некорректный журнал");
+  const day = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  const file = path.join(userDocsDir("Logs"), `support-${day}.txt`);
+  const header = `AutoFlash ${app.getVersion()} · Electron ${process.versions.electron} · ${process.platform} ${os.release()}\n\n`;
+  fs.writeFileSync(file, header + text, "utf8");
+  return file;
 });
 
 // ───────────── Окно ─────────────

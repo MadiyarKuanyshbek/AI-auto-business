@@ -159,3 +159,68 @@ describe("демо-установка для других виртуальных
     }
   });
 });
+
+describe("кодирование блока (UDS 0x2E)", () => {
+  async function dsg() {
+    const { DEMO_CODING_DSG } = await import("../src/core/sim/demoCoding");
+    const elm = new Elm327(new SimulatedAdapter(structuredClone(DEMO_VEHICLES[0])));
+    await elm.open();
+    const scan = await scanVehicle(elm, { online: false });
+    const ecu = scan.ecus.find((e) => e.txId === "7E1")!;
+    return { elm, ecu, pkg: DEMO_CODING_DSG };
+  }
+  it("проверяет описание пакета и отвергает неверные", async () => {
+    const { parseCodingPackage } = await import("../src/core/coding");
+    const { DEMO_CODING_DSG } = await import("../src/core/sim/demoCoding");
+    expect(parseCodingPackage(DEMO_CODING_DSG).ok).toBe(true);
+    const bad = structuredClone(DEMO_CODING_DSG);
+    bad.options[0].changes[0].byte = 9;
+    expect(parseCodingPackage(bad).ok).toBe(false);
+    const bad2 = structuredClone(DEMO_CODING_DSG);
+    bad2.options[0].changes[0].value = 0x04;
+    expect(parseCodingPackage(bad2).ok).toBe(false);
+    expect(parseCodingPackage({ format: "x" }).ok).toBe(false);
+  });
+  it("применяет настройки к значению и находит уже включённые", async () => {
+    const { applyOptions, activeOptions, diffBytes } = await import("../src/core/coding");
+    const { DEMO_CODING_DSG: pkg } = await import("../src/core/sim/demoCoding");
+    const orig = [0x01, 0x00, 0x20, 0x00];
+    const next = applyOptions(orig, pkg, ["sport-default", "hill-hold"]);
+    expect(next).toEqual([0x03, 0x01, 0x20, 0x00]);
+    expect(activeOptions(next, pkg).sort()).toEqual(["hill-hold", "sport-default"]);
+    expect(diffBytes(orig, next).length).toBe(2);
+  });
+  it("читает, записывает, проверяет и возвращает настройки виртуальной коробки", async () => {
+    const { readCoding, writeCoding, applyOptions, codingFitsEcu } = await import("../src/core/coding");
+    const { elm, ecu, pkg } = await dsg();
+    expect(codingFitsEcu(pkg, ecu)).toBe(true);
+    const original = await readCoding(elm, ecu, pkg);
+    expect(original).toEqual([0x01, 0x00, 0x20, 0x00]);
+    const next = applyOptions(original, pkg, ["gear-hint"]);
+    const res = await writeCoding(elm, ecu, pkg, original, next);
+    expect(res.status).toBe("success");
+    expect(await readCoding(elm, ecu, pkg)).toEqual(next);
+    const back = await writeCoding(elm, ecu, pkg, next, original);
+    expect(back.status).toBe("success");
+    expect(await readCoding(elm, ecu, pkg)).toEqual(original);
+  });
+  it("без верного алгоритма доступа блок не пишется, настройки остаются прежними", async () => {
+    const { readCoding, writeCoding } = await import("../src/core/coding");
+    const { elm, ecu, pkg } = await dsg();
+    const original = await readCoding(elm, ecu, pkg);
+    const wrong = structuredClone(pkg);
+    wrong.security = { level: 0x03, algorithm: "demo-xor-add", params: { maskHex: "99" } };
+    const res = await writeCoding(elm, ecu, wrong, original, [0xff, 0xff, 0xff, 0xff]);
+    expect(res.status).toBe("failed");
+    expect(await readCoding(elm, ecu, pkg)).toEqual(original);
+  });
+  it("пакет не подходит другому блоку и неверной длине значения", async () => {
+    const { codingFitsEcu, readCoding } = await import("../src/core/coding");
+    const { elm, ecu, pkg } = await dsg();
+    const engine = (await scanVehicle(elm, { online: false })).ecus.find((e) => e.txId === "7E0")!;
+    expect(codingFitsEcu(pkg, engine)).toBe(false);
+    const wrongLen = structuredClone(pkg);
+    wrongLen.target.length = 6;
+    await expect(readCoding(elm, ecu, wrongLen)).rejects.toThrow(/Длина/);
+  });
+});

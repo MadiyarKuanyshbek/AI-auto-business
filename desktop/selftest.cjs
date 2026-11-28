@@ -117,6 +117,18 @@ async function run(win, outDir, app) {
     step("безопасность: подключение к адресам в интернете запрещено (только локальная сеть)", /локальной сети/.test(String(tcpGuard)), String(tcpGuard).slice(0, 100));
     const pageText = await text();
     step("способы подключения: Bluetooth, Wi‑Fi, USB и OBD-сканер описаны", ["Bluetooth", "Wi‑Fi", "USB-кабель", "OBD-сканер", "J2534"].every((t) => pageText.includes(t)));
+    const pdfPath = await js(`window.autoflash.files.savePdf("<!doctype html><html><body><h1>Тест</h1></body></html>", "selftest").then((f) => String(f), (e) => "ERR " + e.message)`);
+    step("PDF: отчёт сохраняется в файл", /\.pdf$/.test(String(pdfPath)), String(pdfPath).slice(-60));
+    const logPath = await js(`window.autoflash.files.exportLog("тест журнала").then((f) => String(f), (e) => "ERR " + e.message)`);
+    step("журнал для поддержки сохраняется в файл", /support-.*\.txt$/.test(String(logPath)), String(logPath).slice(-60));
+    const mirrorBefore = await js(`window.autoflash.backup.getMirror().then((m) => m === null ? "none" : "set")`);
+    step("резервные копии: дополнительная папка по умолчанию не задана и читается", mirrorBefore === "none");
+    const upd = await js(`window.autoflash.update.check().then((r) => JSON.stringify({ ok: r.ok, current: r.current, hasLatest: r.latest !== undefined }))`);
+    step("обновления: проверка отвечает и знает текущую версию", /"current":"\d+\.\d+\.\d+"/.test(String(upd)), String(upd));
+    const updBad = await js(`window.autoflash.update.open("https://evil.example/x").then((r) => r)`);
+    step("обновления: открыть можно только страницу проекта на GitHub", updBad === false);
+    const j2534 = await js(`window.autoflash.j2534.list().then((l) => Array.isArray(l))`);
+    step("J2534: список установленных драйверов читается", j2534 === true);
     step("настройка: определение модели по VIN через интернет можно выключить", (await text()).includes("Определять модель по VIN через интернет"));
 
     await shot("01-connect");
@@ -180,6 +192,7 @@ async function run(win, outDir, app) {
     const tabsText = await text();
     step("вкладка 2: четыре раздела сверху", ["Что сделать", "Блоки автомобиля", "Поиск моделей", "Библиотека пакетов"].every((t) => tabsText.includes(t)));
     step("вкладка 2: карточки «Что вы хотите сделать?»", (await text()).includes("Что вы хотите сделать?") && (await text()).includes("Русификация") && (await text()).includes("Установка приложений"));
+    step("вкладка 2: есть задача «Кодирование» с пояснением", (await text()).includes("Кодирование") && (await text()).includes("Изменить настройки блока: включить или выключить функции"));
     step("вкладка 2: открытие объяснения русификации", await click("Как это сделать", { nth: 1 }) && await waitText("Что это такое", 4000));
     step("русификация: простое объяснение и шаги для марки", (await text()).includes("✅ Подключено:") && (await text()).includes("перевод интерфейса магнитолы") && (await text()).toLowerCase().includes("как это сделать: volkswagen") && (await text()).includes("Настройки → Язык"));
     step("русификация: у подключённой машины нет выбора китайских марок", !(await text()).includes("Great Wall") && !(await text()).includes("Автомобиль не подключён"));
@@ -270,6 +283,34 @@ async function run(win, outDir, app) {
     step("после установки: у блока новый номер ПО", /1037525811-[0-9A-F]{4}/.test(afterText));
     await shot("08-cars-after");
 
+    // ── Кодирование блока (настройки коробки виртуального Golf) ──
+    const clickTestId = async (id) => {
+      const pt = await js(`(() => {
+        const el = document.querySelector('[data-testid="${id}"]');
+        if (!el) return null;
+        el.scrollIntoView({ block: 'center' });
+        const r = el.getBoundingClientRect();
+        return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+      })()`);
+      if (!pt) return false;
+      await sleep(200);
+      wc.sendInputEvent({ type: "mouseMove", x: pt.x, y: pt.y });
+      wc.sendInputEvent({ type: "mouseDown", x: pt.x, y: pt.y, button: "left", clickCount: 1 });
+      wc.sendInputEvent({ type: "mouseUp", x: pt.x, y: pt.y, button: "left", clickCount: 1 });
+      await sleep(300);
+      return true;
+    };
+    step("кодирование: у блока коробки есть кнопка изменения настроек", (await text()).includes("Демо: настройки коробки DSG") && await click("Изменить настройки блока"));
+    step("кодирование: прочитаны текущие настройки блока", await waitText("01 00 20 00", 8000) && (await text()).includes("Что включить"));
+    step("кодирование: выбор настройки «Подсказка передачи» меняет будущее значение", await clickTestId("opt-gear-hint") && await waitText("01 00 30 00", 4000));
+    await shot("08b-coding");
+    step("кодирование: без подтверждения запись заблокирована", (await text()).includes("Записать настройки"));
+    step("кодирование: подтверждение и запись", await clickTestId("coding-consent") && await click("Записать настройки") && await waitText("Настройки записаны и проверены", 20000));
+    step("кодирование: записанное значение прочитано обратно", await waitText("Журнал изменений", 4000) && (await text()).includes("01 00 30 00"));
+    step("кодирование: возврат прежних настроек из журнала", await click("Вернуть «Было»") && await waitText("Прежние настройки возвращены", 20000));
+    await js("history.back()");
+    await sleep(700);
+
     // ── Подробная диагностика (раскрывается по кнопке) ──
     step("кнопка подробной диагностики", await click("Подробная диагностика"));
     step("диагностика: блоки, ошибки, справочник кодов", await waitText("Блоки управления (4)", 4000) && (await text()).includes("Недостаточный наддув (турбина)"));
@@ -278,6 +319,8 @@ async function run(win, outDir, app) {
     step("глубокий поиск нашёл шлюз вне стандартных адресов", await waitText("Найдено новых блоков: 1", 40000));
     const afterDeep = await text();
     step("блок «Шлюз» появился в списке (5 блоков)", afterDeep.includes("Шлюз") && afterDeep.includes("Блоки управления (5)"));
+    step("готовность: проверка систем показывает лампу, число готовых систем", await click("Проверить готовность систем") && await waitText("Лампа Check Engine горит", 8000) && (await text()).includes("Готовы:"));
+    step("замороженный кадр: код ошибки и значения на момент ошибки", await click("Прочитать замороженный кадр") && await waitText("Код ошибки: P0299", 8000) && (await text()).includes("Обороты двигателя"));
     step("кнопка живых данных", await click("Показать живые данные"));
     step("живые данные: обороты 800", await waitText(/Обороты двигателя\s+800\s+об\/мин/, 15000));
     step("живые данные: температура ОЖ 55", await waitText(/Температура ОЖ\s+55\s+°C/, 15000));
@@ -352,6 +395,8 @@ async function run(win, outDir, app) {
     }
     await click("Библиотека пакетов");
     await sleep(600);
+    step("резервные копии: блок с облачной папкой, файлом и загрузкой в библиотеке", (await text()).includes("Резервные копии") && (await text()).includes("Выбрать папку (например, OneDrive)") && (await text()).includes("Сохранить копию в файл…") && (await text()).includes("Загрузить копию из файла…"));
+    step("обновления: блок «О приложении» с проверкой в библиотеке", (await text()).includes("О приложении и обновления") && (await text()).includes("Проверить обновления"));
     { const okb = await click("Создать пакет из своего файла"); step("конструктор: кнопка в библиотеке", okb, okb ? undefined : `${await js("location.pathname")} | ${(await text()).slice(0, 300).replace(/\s+/g, " ")}`); }
     step("конструктор: экран открыт", await waitText("Конструктор пакета прошивки", 4000));
     await click("Создать пакет");

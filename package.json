@@ -43,12 +43,15 @@
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
     "sim-server": "esbuild tools/sim-server.ts --bundle --platform=node --outfile=desktop/sim-server.cjs --log-level=error && node desktop/sim-server.cjs",
-    "desktop:build": "node desktop/build.mjs"
+    "desktop:build": "node desktop/build.mjs",
+    "desktop:installer": "npm run desktop:build && npx --yes electron-builder@26.18.0 --prepackaged desktop/out/AutoFlash-win32-x64 --win nsis --config desktop/builder.config.cjs"
   },
   "private": true,
   "overrides": {
     "@expo/fingerprint": {
       "minimatch": "^11.0.9"
     }
-  }
+  },
+  "description": "AutoFlash: подключение к автомобилю и магнитоле, прошивки, кодирование, русификация и приложения",
+  "author": "AutoFlash"
 }

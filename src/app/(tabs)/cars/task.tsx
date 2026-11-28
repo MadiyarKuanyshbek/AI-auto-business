@@ -16,7 +16,7 @@ export default function TaskScreen() {
   const { liveScan, connection } = useSession();
   const carTitle = liveScan ? vehicleTitle(liveScan) : null;
   const isConnected = connection.status === "ready";
-  const k: TaskKind = kind === "russify" || kind === "apps" ? kind : "firmware";
+  const k: TaskKind = kind === "russify" || kind === "apps" || kind === "coding" ? kind : "firmware";
   const guide = TASKS[k];
 
   // Если автомобиль подключён, шаги показываются для него; выбор марки нужен только без подключения.
@@ -26,7 +26,9 @@ export default function TaskScreen() {
   const plan = planFor(k, make);
 
   const action =
-    k === "firmware"
+    k === "coding"
+      ? { title: "Открыть блоки автомобиля", go: () => router.push({ pathname: "/cars", params: { section: "blocks" } }) }
+      : k === "firmware"
       ? { title: "Открыть блоки и пакеты прошивки", go: () => router.push({ pathname: "/cars", params: { section: "blocks" } }) }
       : k === "russify"
         ? { title: "Открыть выбор языка на магнитоле (Wi‑Fi)", go: () => router.push("/cars/apps") }

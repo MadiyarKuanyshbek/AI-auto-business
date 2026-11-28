@@ -43,3 +43,13 @@ describe("settings sanitising", () => {
     expect(sanitizeData({ customers: [{ id: 1 }], jobs: [1], media: { x: [{ kind: "bad" }] } }).media.x).toEqual([]);
   });
 });
+
+describe("подписи в отчётах", () => {
+  it("в отчёте и в сравнении есть блок подписей мастера и клиента", async () => {
+    const { signatureBlockHtml } = await import("../src/core/report");
+    const html = signatureBlockHtml("Мастерская");
+    expect(html).toContain("Мастер (Мастерская)");
+    expect(html).toContain("Клиент");
+    expect(html).toContain("Дата");
+  });
+});

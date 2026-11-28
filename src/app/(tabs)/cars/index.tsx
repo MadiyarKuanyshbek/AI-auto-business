@@ -11,7 +11,10 @@ import { useSession } from "../../../session";
 import { useStore } from "../../../storage/store";
 import { vehicleTitle } from "../../../storage/model";
 import { Badge, Body, Button, Card, Empty, Field, H1, H2, Muted, Row, Screen, colors } from "../../../ui/kit";
+import { AboutCard } from "../../../ui/AboutCard";
+import { BackupCard } from "../../../ui/BackupCard";
 import { Diagnostics } from "../../../ui/Diagnostics";
+import { codingFitsEcu } from "../../../core/coding";
 import { CHINESE_MAKES, DIFFERENCE, TASKS, type TaskKind } from "../../../core/guides";
 
 const EXAMPLES = ["камри", "bmw x5", "прадо 2019", "golf", "мерседес е класс", "крета"];
@@ -19,7 +22,7 @@ const STATUS_TEXT = { ready: "Готов к установке", demo: "Демо
 
 export default function CarsScreen() {
   const router = useRouter();
-  const { scan, liveScan, connection, packages } = useSession();
+  const { scan, liveScan, connection, packages, codingPackages } = useSession();
   const store = useStore();
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -72,7 +75,7 @@ export default function CarsScreen() {
       {section === "tasks" ? (
         <>
       <H2>Что вы хотите сделать?</H2>
-      {(["firmware", "russify", "apps"] as TaskKind[]).map((k) => {
+      {(["firmware", "russify", "apps", "coding"] as TaskKind[]).map((k) => {
         const t = TASKS[k];
         return (
           <Card key={k}>
@@ -130,6 +133,18 @@ export default function CarsScreen() {
                   {family.name} · ПО: {ecu.ident.supplierSoftwareNumber ?? ecu.ident.softwareNumber ?? ecu.ident.softwareVersion ?? "не считано"}
                 </Muted>
                 {states.length === 0 ? <Muted>Прошивок для этого блока пока нет.</Muted> : null}
+                {codingPackages.filter((c) => codingFitsEcu(c, ecu)).map((c) => (
+                  <View key={c.id} style={{ gap: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: colors.border }}>
+                    <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+                      <Badge tone="accent" text="Кодирование" />
+                      {c.demo ? <Badge text="Демо" /> : null}
+                    </View>
+                    <Body style={{ fontWeight: "600" }}>{c.title}</Body>
+                    <Muted>{c.description}</Muted>
+                    <Button title="Изменить настройки блока" kind="ghost" disabled={!connected} onPress={() => router.push({ pathname: "/cars/coding", params: { pkg: c.id, ecu: ecu.txId } })} />
+                    {!connected ? <Muted>Для изменения подключитесь к автомобилю.</Muted> : null}
+                  </View>
+                ))}
                 {states.map((s) => (
                   <View key={s.pkg.id} style={{ gap: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: colors.border }}>
                     <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
@@ -222,6 +237,8 @@ export default function CarsScreen() {
         ))}
         {userPackages.length === 0 ? <Muted>Своих пакетов пока нет.</Muted> : null}
       </Card>
+        <BackupCard />
+        <AboutCard />
         </>
       ) : null}
 

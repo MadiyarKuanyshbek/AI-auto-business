@@ -15,6 +15,17 @@ export type DesktopBridge = {
   backup: {
     save(json: string, name?: string): Promise<string>;
     openFolder(): Promise<string>;
+    saveAs(json: string): Promise<string | null>;
+    load(): Promise<string | null>;
+    getMirror(): Promise<string | null>;
+    chooseMirror(): Promise<string | null>;
+    clearMirror(): Promise<boolean>;
+  };
+  files: {
+    savePdf(html: string, name: string): Promise<string>;
+    reveal(file: string): Promise<boolean>;
+    exportLog(text: string): Promise<string>;
+    saveText(text: string, name: string, ext: "csv" | "txt"): Promise<string>;
   };
   radio: {
     get(): Promise<{ ok: boolean; radios: { kind: "Bluetooth" | "WiFi"; state: string }[]; error?: string }>;
@@ -26,6 +37,11 @@ export type DesktopBridge = {
     choose(file: string): Promise<string | null>;
     openFolder(): Promise<string>;
   };
+  update: {
+    check(): Promise<{ ok: boolean; current: string; latest?: string | null; newer?: boolean; url?: string; downloadUrl?: string | null; notes?: string; error?: string }>;
+    open(url: string): Promise<boolean>;
+  };
+  j2534: { list(): Promise<{ name: string; vendor: string }[]> };
   usb: {
     drives(): Promise<{ letter: string; label: string; fileSystem: string; size: number; free: number }[]>;
     pickFile(): Promise<{ name: string; size: number } | null>;

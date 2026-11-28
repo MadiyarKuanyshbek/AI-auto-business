@@ -14,6 +14,10 @@ export type SimEcu = {
   /** KWP2000 (K-Line): локальный идентификатор службы 0x1A → значение. */
   kwpIdent?: Record<number, string>;
   dtcs?: string[]; // "P0171"
+  /** Блок принимает запись настроек (UDS 0x2E по DID из dids) после сессии и, если задан seedHex, доступа 0x27. */
+  coding?: { writableDids: number[]; seedHex?: string; maskHex?: string };
+  /** Замороженный кадр (режим 02): код ошибки и значения PID на тот момент. */
+  freeze?: { dtc: string; pids: Record<number, number[]> };
   /** Задержка ответа в мс (для проверки таймаутов). */
   delayMs?: number;
   /** Виртуальный загрузчик блока: позволяет проверять установку прошивки (UDS 0x10/0x27/0x31/0x34/0x36/0x37/0x11/0x23). */
@@ -352,10 +356,62 @@ export class SimulatedAdapter implements Transport {
     return null;
   }
 
+  private codeState = new Map<SimEcu, { session: number; unlocked: boolean; seedOut: boolean }>();
+
+  /** Запись настроек блока (UDS 0x2E) для блоков с описанным coding. */
+  private codingService(ecu: SimEcu, req: number[]): number[] | null {
+    const c = ecu.coding!;
+    const [service, a] = req;
+    const st = this.codeState.get(ecu) ?? { session: 1, unlocked: false, seedOut: false };
+    this.codeState.set(ecu, st);
+    if (service === 0x10) {
+      st.session = a;
+      if (a === 1) st.unlocked = false;
+      return [0x50, a, 0x00, 0x32, 0x01, 0xf4];
+    }
+    if (service === 0x27 && c.seedHex) {
+      if (a % 2 === 1) {
+        if (st.session === 1) return [0x7f, 0x27, 0x7e];
+        st.seedOut = true;
+        return [0x67, a, ...hexToBytesLocal(c.seedHex)];
+      }
+      if (!st.seedOut) return [0x7f, 0x27, 0x24];
+      const seed = hexToBytesLocal(c.seedHex);
+      const mask = hexToBytesLocal(c.maskHex ?? "5A");
+      const expected = seed.map((x, i) => ((x ^ mask[i % mask.length]) + 1) & 0xff);
+      const key = req.slice(2);
+      if (key.length !== expected.length || key.some((x, i) => x !== expected[i])) return [0x7f, 0x27, 0x35];
+      st.unlocked = true;
+      return [0x67, a];
+    }
+    if (service === 0x2e) {
+      const did = (req[1] << 8) | req[2];
+      if (!c.writableDids.includes(did)) return [0x7f, 0x2e, 0x31];
+      if (st.session === 1) return [0x7f, 0x2e, 0x7f];
+      if (c.seedHex && !st.unlocked) return [0x7f, 0x2e, 0x33];
+      const cur = ecu.dids?.[did];
+      const curLen = typeof cur === "string" ? cur.length : (cur?.length ?? 0);
+      const data = req.slice(3);
+      if (curLen && data.length !== curLen) return [0x7f, 0x2e, 0x13];
+      ecu.dids = { ...(ecu.dids ?? {}), [did]: data };
+      return [0x6e, req[1], req[2]];
+    }
+    return null;
+  }
+
   /** Ответ блока на запрос (без CAN-обвязки). null — блок промолчал. */
   private respond(ecu: SimEcu, req: number[]): number[] | null {
     const v = this.vehicle;
     const [service, a] = req;
+
+    // Режим 02: замороженный кадр (данные на момент первой ошибки).
+    if (service === 0x02 && ecu.obd) {
+      const frame = req[2] ?? 0;
+      if (!ecu.freeze || frame !== 0) return [0x7f, 0x02, 0x31];
+      if (a === 0x02) return [0x42, 0x02, frame, ...dtcToBytes(ecu.freeze.dtc)];
+      const data = ecu.freeze.pids[a];
+      return data ? [0x42, a, frame, ...data] : [0x7f, 0x02, 0x31];
+    }
 
     if (service === 0x01 && ecu.obd) {
       if (a % 0x20 === 0) {
@@ -399,6 +455,11 @@ export class SimulatedAdapter implements Transport {
       if (value === undefined) return [0x7f, 0x22, 0x31];
       const bytes = typeof value === "string" ? asciiToBytes(value) : value;
       return [0x62, req[1], req[2], ...bytes];
+    }
+
+    if (ecu.coding && (service === 0x10 || service === 0x27 || service === 0x2e)) {
+      const r = this.codingService(ecu, req);
+      if (r) return r;
     }
 
     if (ecu.flash) {

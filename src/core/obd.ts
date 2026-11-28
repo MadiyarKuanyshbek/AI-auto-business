@@ -187,3 +187,86 @@ export async function readMode09(elm: Elm327): Promise<Mode09Info> {
 
   return info;
 }
+
+// ───────────── Готовность систем к техосмотру (PID 01) ─────────────
+
+export type MonitorState = { name: string; supported: boolean; complete: boolean };
+export type Readiness = {
+  /** Горит ли лампа Check Engine. */
+  milOn: boolean;
+  /** Сколько кодов неисправностей хранит двигатель. */
+  dtcCount: number;
+  /** Дизель (compression) или бензин (spark): набор систем разный. */
+  diesel: boolean;
+  monitors: MonitorState[];
+};
+
+const SPARK_NAMES = ["Катализатор", "Подогрев катализатора", "Система улавливания паров (EVAP)", "Вторичный воздух", "Кондиционер", "Датчик кислорода", "Подогрев датчика кислорода", "Рециркуляция (EGR)"];
+const DIESEL_NAMES = ["Катализатор NMHC", "Очистка NOx (SCR)", "", "Наддув", "", "Датчик выхлопных газов", "Сажевый фильтр (DPF)", "Рециркуляция / VVT"];
+
+/** Разбор ответа на запрос 01 01 (4 байта): состояние лампы и готовность систем. */
+export function decodeMonitorStatus(b: number[]): Readiness {
+  const [a, bb, c, d] = b;
+  const diesel = (bb & 0x08) !== 0;
+  const monitors: MonitorState[] = [
+    { name: "Пропуски зажигания", supported: (bb & 0x01) !== 0, complete: (bb & 0x10) === 0 },
+    { name: "Топливная система", supported: (bb & 0x02) !== 0, complete: (bb & 0x20) === 0 },
+    { name: "Прочие компоненты", supported: (bb & 0x04) !== 0, complete: (bb & 0x40) === 0 },
+  ];
+  const names = diesel ? DIESEL_NAMES : SPARK_NAMES;
+  for (let bit = 0; bit < 8; bit++) {
+    if (!names[bit]) continue;
+    monitors.push({ name: names[bit], supported: (c & (1 << bit)) !== 0, complete: (d & (1 << bit)) === 0 });
+  }
+  return { milOn: (a & 0x80) !== 0, dtcCount: a & 0x7f, diesel, monitors };
+}
+
+/** Итог: сколько систем поддерживается, сколько из них готово. */
+export function readinessSummary(r: Readiness): { supported: number; ready: number; notReady: string[] } {
+  const sup = r.monitors.filter((m) => m.supported);
+  return { supported: sup.length, ready: sup.filter((m) => m.complete).length, notReady: sup.filter((m) => !m.complete).map((m) => m.name) };
+}
+
+export async function readReadiness(elm: Elm327): Promise<Readiness> {
+  const data = dataFor(await elm.request("0101"), 0x01, 0x01);
+  if (!data || data.length < 4) throw new AdapterError("Блок не отдал состояние систем", "protocol");
+  return decodeMonitorStatus(data);
+}
+
+// ───────────── Замороженные кадры (режим 02) ─────────────
+
+export type FreezeFrame = { dtc?: string; values: LiveValue[] };
+
+const FREEZE_PIDS = [0x04, 0x05, 0x0b, 0x0c, 0x0d, 0x0f, 0x11];
+
+/** Данные, записанные двигателем в момент появления первой ошибки. */
+export async function readFreezeFrame(elm: Elm327, frame = 0): Promise<FreezeFrame | null> {
+  const hexFrame = frame.toString(16).padStart(2, "0");
+  const parse = (messages: { data: number[] }[], pid: number): number[] | null => {
+    for (const m of messages) {
+      const d = m.data;
+      if (d[0] === 0x42 && d[1] === pid) return d.slice(3);
+    }
+    return null;
+  };
+  let dtc: string | undefined;
+  try {
+    const raw = parse(await elm.request(`0202${hexFrame}`), 0x02);
+    if (raw && raw.length >= 2 && (raw[0] !== 0 || raw[1] !== 0)) dtc = decodeDtcPair(raw[0], raw[1]) ?? undefined;
+  } catch {
+    return null;
+  }
+  if (!dtc) return null;
+  const values: LiveValue[] = [];
+  for (const pid of FREEZE_PIDS) {
+    const def = pidDef(pid);
+    if (!def) continue;
+    try {
+      const data = parse(await elm.request(`02${pid.toString(16).padStart(2, "0")}${hexFrame}`), pid);
+      if (data && data.length >= def.bytes) values.push({ pid, name: def.name, unit: def.unit, value: def.decode(data) });
+    } catch {
+      // PID в замороженном кадре не поддерживается
+    }
+  }
+  return { dtc, values };
+}

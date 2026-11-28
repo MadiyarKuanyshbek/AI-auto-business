@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, Switch, Text, View } from "react-native";
-import { logEvent, useLiveEvents } from "../liveLog";
+import { logEvent, useLiveEvents, liveSnapshot } from "../liveLog";
 import { useSession } from "../session";
 import { desktopBridge } from "../transport/desktop";
-import { Badge, Body, Card, H2, Muted, colors } from "./kit";
+import { Badge, Body, Button, Card, H2, Muted, colors } from "./kit";
 
 type RadioState = { kind: "Bluetooth" | "WiFi"; state: string };
 const LABEL = { Bluetooth: "Bluetooth компьютера", WiFi: "Wi‑Fi компьютера" } as const;
@@ -79,6 +79,7 @@ export function LiveMonitor({ mode, active = true }: { mode: "real" | "demo"; ac
   const events = useLiveEvents().filter((e) => e.real === (mode === "real"));
   const [, force] = useState(0);
   const [open, setOpen] = useState(true);
+  const [savedLog, setSavedLog] = useState<string | null>(null);
 
   // Обмен с адаптером копится в самом адаптере, поэтому обновляем экран по таймеру.
   useEffect(() => {
@@ -89,6 +90,24 @@ export function LiveMonitor({ mode, active = true }: { mode: "real" | "demo"; ac
 
   const connected = connection.status === "ready";
   const log = connected && (connection.kind === "demo") === (mode === "demo") ? exchangeLog().slice(-14) : [];
+
+  /** Полный журнал событий и обмена с адаптером в файл: пригодится, если на настоящей машине что-то пошло не так. */
+  async function saveSupportLog() {
+    const bridge = desktopBridge();
+    if (!bridge) return;
+    const all = liveSnapshot();
+    const lines = [
+      `Режим: ${mode}`,
+      `Подключение: ${stateText}`,
+      "",
+      "== События ==",
+      ...all.events.map((e) => `${new Date(e.t).toISOString()}  ${e.real ? "" : "[демо] "}${e.text}`),
+      "",
+      "== Обмен с адаптером ==",
+      ...exchangeLog().map((l) => `${new Date(l.t).toISOString()} ${l.dir === "tx" ? "→" : "←"} ${l.text.replace(/\s+/g, " ")}`),
+    ];
+    setSavedLog(await bridge.files.exportLog(lines.join("\n")));
+  }
   const real = mode === "real";
   const stateText =
     connection.status === "ready" ? `Подключено: ${connection.label}` : connection.status === "connecting" ? `Подключаюсь: ${connection.label}` : connection.status === "error" ? connection.message : "Не подключено";
@@ -117,6 +136,12 @@ export function LiveMonitor({ mode, active = true }: { mode: "real" | "demo"; ac
               {l.dir === "tx" ? "→" : "←"} {l.text.replace(/\s+/g, " ").slice(0, 120)}
             </Text>
           ))}
+          {desktopBridge() ? (
+            <>
+              <Button title="Сохранить журнал для поддержки" kind="ghost" onPress={() => void saveSupportLog()} />
+              {savedLog ? <Muted>Журнал сохранён: {savedLog}. Его можно отправить разработчику, если что-то не работает (в нём есть VIN и команды адаптера).</Muted> : null}
+            </>
+          ) : null}
         </>
       ) : null}
     </Card>

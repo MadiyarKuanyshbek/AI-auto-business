@@ -3,7 +3,9 @@ import { useCallback, useRef, useState } from "react";
 import { View } from "react-native";
 import { PIDS, readPid, type LiveValue } from "../core/obd";
 import { useSession } from "../session";
+import { desktopBridge } from "../transport/desktop";
 import { Body, Button, Card, Muted, colors } from "./kit";
+import { Sparkline } from "./Sparkline";
 
 const SHOWN = [0x0c, 0x0d, 0x05, 0x04, 0x0b, 0x11, 0x0f, 0x42, 0x10, 0x5c, 0x2f];
 
@@ -17,6 +19,9 @@ export function LivePanel() {
   const [values, setValues] = useState<Record<number, LiveValue>>({});
   const [error, setError] = useState<string | null>(null);
   const alive = useRef(false);
+  const [history, setHistory] = useState<Record<number, number[]>>({});
+  const rows = useRef<string[]>([]);
+  const [saved, setSaved] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -32,6 +37,9 @@ export function LivePanel() {
             try {
               const v = await readPid(elm, pid);
               setValues((prev) => ({ ...prev, [pid]: v }));
+              setHistory((h) => ({ ...h, [pid]: [...(h[pid] ?? []).slice(-59), v.value] }));
+              rows.current.push(`${new Date().toISOString()};${v.name};${String(v.value).replace(".", ",")};${v.unit}`);
+              if (rows.current.length > 20000) rows.current.splice(0, rows.current.length - 20000);
               setError(null);
             } catch (e) {
               setError(e instanceof Error ? e.message : "Ошибка чтения");
@@ -55,6 +63,20 @@ export function LivePanel() {
         <>
           <Muted>Значения обновляются раз в 1–2 секунды. Двигатель можно не заводить, но нужно зажигание.</Muted>
           {error ? <Body style={{ color: colors.warn }}>{error}</Body> : null}
+          {desktopBridge() ? (
+            <>
+              <Button
+                title="Сохранить записанные значения в CSV (Excel)"
+                kind="ghost"
+                onPress={() => {
+                  void desktopBridge()!
+                    .files.saveText(["Время;Параметр;Значение;Единица", ...rows.current].join("\n"), "Живые данные", "csv")
+                    .then(setSaved);
+                }}
+              />
+              {saved ? <Muted>Сохранено: {saved}</Muted> : null}
+            </>
+          ) : null}
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
             {SHOWN.map((pid) => {
               const def = PIDS.find((p) => p.pid === pid)!;
@@ -64,6 +86,8 @@ export function LivePanel() {
                   <Muted>{def.name}</Muted>
                   <Body style={{ fontSize: 24, fontWeight: "800" }}>{v ? (Number.isInteger(v.value) ? v.value : v.value.toFixed(1)) : "—"}</Body>
                   <Muted>{def.unit}</Muted>
+                  <Sparkline values={history[pid] ?? []} width={110} />
+                  {history[pid] && history[pid].length > 1 ? <Muted style={{ fontSize: 11 }}>мин {Math.min(...history[pid]).toFixed(0)} · макс {Math.max(...history[pid]).toFixed(0)}</Muted> : null}
                 </Card>
               );
             })}

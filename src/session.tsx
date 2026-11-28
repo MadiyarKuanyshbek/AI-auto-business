@@ -1,7 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { parseCodingPackage, type CodingPackage } from "./core/coding";
 import { Elm327 } from "./core/elm327";
 import { parsePackage, type FirmwarePackage } from "./core/package";
 import { deepScan, scanVehicle, type VehicleScan } from "./core/scanner";
+import { DEMO_CODING_DSG } from "./core/sim/demoCoding";
 import { DEMO_PACKAGES } from "./core/sim/demoPackage";
 import { SimulatedAdapter } from "./core/sim/simulator";
 import { DEMO_VEHICLES } from "./core/sim/vehicles";
@@ -28,6 +30,8 @@ type Session = {
   scanError: string | null;
   /** Пакеты прошивки из библиотеки (загруженные + демо, если включены). */
   packages: LoadedPackage[];
+  /** Пакеты кодирования (настройки блоков) из библиотеки. */
+  codingPackages: CodingPackage[];
   connect(transport: Transport): Promise<boolean>;
   connectDemo(index: number): Promise<boolean>;
   disconnect(): Promise<void>;
@@ -67,6 +71,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     for (const item of raw) {
       const parsed = parsePackage(item);
       if (parsed.ok) out.push({ pkg: parsed.pkg, segments: parsed.segments });
+    }
+    return out;
+  }, [showDemo, store.data.packages]);
+
+  const codingPackages = useMemo<CodingPackage[]>(() => {
+    const raw: unknown[] = [...(showDemo ? [DEMO_CODING_DSG] : []), ...store.data.packages];
+    const out: CodingPackage[] = [];
+    for (const item of raw) {
+      const parsed = parseCodingPackage(item);
+      if (parsed.ok) out.push(parsed.pkg);
     }
     return out;
   }, [showDemo, store.data.packages]);
@@ -187,6 +201,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     progress,
     scanError,
     packages,
+    codingPackages,
     connect,
     connectDemo,
     disconnect,

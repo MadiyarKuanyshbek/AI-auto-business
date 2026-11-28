@@ -184,3 +184,38 @@ describe("deep scan and friendly names", () => {
     expect(await deepScan(elm, [])).toEqual([]);
   });
 });
+
+describe("готовность систем и замороженный кадр", () => {
+  it("разбирает состояние систем: лампа, число кодов, неготовые системы", async () => {
+    const { decodeMonitorStatus, readinessSummary } = await import("../src/core/obd");
+    const r = decodeMonitorStatus([0x82, 0x07, 0xe5, 0x04]);
+    expect(r.milOn).toBe(true);
+    expect(r.dtcCount).toBe(2);
+    expect(r.diesel).toBe(false);
+    const sum = readinessSummary(r);
+    expect(sum.notReady).toContain("Система улавливания паров (EVAP)");
+    expect(sum.supported).toBeGreaterThan(sum.ready);
+    const d = decodeMonitorStatus([0x01, 0x0f, 0xe0, 0x00]);
+    expect(d.diesel).toBe(true);
+    expect(d.monitors.some((m) => m.name === "Сажевый фильтр (DPF)" && m.supported && m.complete)).toBe(true);
+  });
+  it("читает готовность и замороженный кадр с виртуального двигателя", async () => {
+    const { readReadiness, readFreezeFrame } = await import("../src/core/obd");
+    const elm = new Elm327(new SimulatedAdapter(structuredClone(DEMO_VEHICLES[0])));
+    await elm.open();
+    await scanVehicle(elm, { online: false });
+    const ready = await readReadiness(elm);
+    expect(ready.milOn).toBe(true);
+    expect(ready.diesel).toBe(true);
+    const ff = await readFreezeFrame(elm);
+    expect(ff?.dtc).toBe("P0299");
+    expect(ff?.values.find((v) => v.pid === 0x0c)?.value).toBe(1726); // 0x1AF8 / 4
+    expect(ff?.values.find((v) => v.pid === 0x05)?.value).toBe(72); // 0x70 - 40
+  });
+  it("без сохранённой ошибки замороженного кадра нет", async () => {
+    const { readFreezeFrame } = await import("../src/core/obd");
+    const elm = new Elm327(new SimulatedAdapter(structuredClone(DEMO_VEHICLES[1])));
+    await elm.open();
+    expect(await readFreezeFrame(elm)).toBeNull();
+  });
+});

@@ -3,7 +3,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { VehicleScan } from "../core/scanner";
 import { desktopBridge } from "../transport/desktop";
 import { parsePackage } from "../core/package";
-import { EMPTY_DATA, newId, sanitizeData, vehicleTitle, type AppData, type CarMedia, type InstallRecord, type QueueItem, type Settings, type VehicleRec } from "./model";
+import { parseCodingPackage } from "../core/coding";
+import { EMPTY_DATA, newId, sanitizeData, vehicleTitle, type AppData, type CarMedia, type CodingRecord, type InstallRecord, type QueueItem, type Settings, type VehicleRec } from "./model";
 
 const KEY = "autoflash.v1";
 const MAX_SCANS_PER_VEHICLE = 5;
@@ -23,6 +24,7 @@ type Store = {
   addMedia(carId: string, media: Omit<CarMedia, "id">): void;
   removeMedia(carId: string, mediaId: string): void;
   enqueue(item: Omit<QueueItem, "id" | "at">): void;
+  addCodingRecord(rec: Omit<CodingRecord, "id" | "at">): void;
   dequeue(id: string): void;
   /** Полная копия данных в виде JSON-текста (для переноса на другой компьютер). */
   exportJson(): string;
@@ -107,13 +109,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setData(next);
         return result;
       },
+      addCodingRecord(rec) {
+        mutate((d) => ({ ...d, coding: [{ id: newId(), at: Date.now(), ...rec }, ...d.coding].slice(0, 200) }));
+      },
       addPackage(json) {
+        // Пакет кодирования (настройки блока) хранится в той же библиотеке, что и пакеты прошивки.
+        if ((json as { format?: string } | null)?.format === "autoflash-coding") {
+          const c = parseCodingPackage(json);
+          if (!c.ok) return { ok: false, error: c.error };
+          const rest = dataRef.current.packages.filter((p) => (p as { id?: string }).id !== c.pkg.id);
+          const next = { ...dataRef.current, packages: [...rest, json] };
+          dataRef.current = next;
+          setData(next);
+          return { ok: true, title: `${c.pkg.title} (кодирование)` };
+        }
         const parsed = parsePackage(json);
         if (!parsed.ok) return { ok: false, error: parsed.error };
         const { id, version } = parsed.pkg;
         const rest = dataRef.current.packages.filter((p) => {
           const q = p as { id?: string; version?: string };
-          return !(q.id === id && q.version === version);
+          return !(q.id === id && (q.version ?? "") === version);
         });
         const next = { ...dataRef.current, packages: [...rest, json] };
         dataRef.current = next;

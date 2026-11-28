@@ -19,9 +19,10 @@ export default function TaskScreen() {
   const k: TaskKind = kind === "russify" || kind === "apps" ? kind : "firmware";
   const guide = TASKS[k];
 
-  const connectedMake = liveScan?.vinOnline?.make ?? liveScan?.vinInfo?.make ?? null;
-  const normalized = connectedMake ? CHINESE_MAKES.find((m) => m.toLowerCase() === connectedMake.toLowerCase()) : undefined;
-  const [make, setMake] = useState<string>(normalized ?? "Chery");
+  // Если автомобиль подключён, шаги показываются для него; выбор марки нужен только без подключения.
+  const connectedMake = isConnected ? (liveScan?.vinOnline?.make ?? liveScan?.vinInfo?.make ?? null) : null;
+  const [pickedMake, setMake] = useState<string>("Chery");
+  const make = connectedMake ?? pickedMake;
   const plan = planFor(k, make);
 
   const action =
@@ -46,6 +47,34 @@ export default function TaskScreen() {
           <Button title="Подключиться к автомобилю" onPress={() => router.push("/")} />
         </Card>
       )}
+      <H2>{connectedMake ? `Как это сделать: ${make}` : "Как это сделать"}</H2>
+      <Card>
+        {!connectedMake ? (
+          <>
+            <Muted>Автомобиль не подключён: выберите марку, чтобы увидеть шаги именно для неё.</Muted>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+              {CHINESE_MAKES.map((m) => (
+                <Pressable key={m} onPress={() => setMake(m)} style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 999, backgroundColor: make === m ? colors.accent : colors.card, borderWidth: 1, borderColor: colors.border }}>
+                  <Text style={{ color: colors.text, fontWeight: "700", fontSize: 13 }}>{m}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Body style={{ fontWeight: "700" }}>Шаги для {make}</Body>
+          </>
+        ) : null}
+        {plan.steps.map((t, i) => (
+          <View key={t} style={{ flexDirection: "row", gap: 10 }}>
+            <Text style={{ color: colors.accent, fontWeight: "800", width: 20 }}>{i + 1}.</Text>
+            <Body style={{ flex: 1 }}>{t}</Body>
+          </View>
+        ))}
+        {plan.notes.map((t) => (
+          <Muted key={t}>• {t}</Muted>
+        ))}
+        <Muted>Сведения о марках собраны из обсуждений владельцев и заметок производителей. На вашей версии системы пункты меню могут называться иначе.</Muted>
+        <Button title={action.title} onPress={action.go} />
+      </Card>
+
       <Card>
         <Body style={{ fontWeight: "700" }}>Что это такое</Body>
         {guide.what.map((t) => (
@@ -64,33 +93,6 @@ export default function TaskScreen() {
           <Badge text={`Через: ${guide.via}`} />
         </View>
         <Muted>{guide.risk.text}</Muted>
-      </Card>
-
-      <H2>Ваша марка</H2>
-      <Card>
-        {connectedMake ? <Muted>Подключён автомобиль: {connectedMake}. Можно выбрать другую марку.</Muted> : <Muted>Выберите марку, чтобы увидеть шаги именно для неё.</Muted>}
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-          {CHINESE_MAKES.map((m) => (
-            <Pressable key={m} onPress={() => setMake(m)} style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 999, backgroundColor: make === m ? colors.accent : colors.card, borderWidth: 1, borderColor: colors.border }}>
-              <Text style={{ color: colors.text, fontWeight: "700", fontSize: 13 }}>{m}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </Card>
-
-      <H2>{`Как это сделать: ${make}`}</H2>
-      <Card>
-        {plan.steps.map((t, i) => (
-          <View key={t} style={{ flexDirection: "row", gap: 10 }}>
-            <Text style={{ color: colors.accent, fontWeight: "800", width: 20 }}>{i + 1}.</Text>
-            <Body style={{ flex: 1 }}>{t}</Body>
-          </View>
-        ))}
-        {plan.notes.map((t) => (
-          <Muted key={t}>• {t}</Muted>
-        ))}
-        <Muted>Сведения о марках собраны из обсуждений владельцев и заметок производителей. На вашей версии системы пункты меню могут называться иначе.</Muted>
-        <Button title={action.title} onPress={action.go} />
       </Card>
 
       <H2>Чем это отличается</H2>

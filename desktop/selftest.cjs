@@ -148,6 +148,11 @@ async function run(win, outDir, app) {
     await closeSheet();
     step("после подключения сверху крупно: «Подключение удалось», машина и что установить", (await text()).includes("✅ Подключение удалось") && (await text()).includes("Что установить в эту машину?") && (await text()).includes("Автомобиль: VOLKSWAGEN"));
     step("монитор: события и обмен с адаптером видны в реальном времени", (await text()).includes("Что происходит сейчас") && (await text()).includes("Автомобиль определён") && (await text()).includes("Обмен с виртуальным адаптером"));
+    const fwOk = await click("🔧 Прошивка блоков") && await waitText("Демо: Stage 1", 12000);
+    const fwText = await text();
+    step("прошивка: кнопка в блоке подключения ведёт сразу к блокам этой машины", fwOk && fwText.includes("Демо: Stage 1"), `ok=${fwOk} stage=${fwText.includes("Демо: Stage 1")} gw=${fwText.includes("Great Wall")} cars=${fwText.includes("Подключённый автомобиль")}`);
+    await goTo("1. Подключение", "/");
+    await sleep(600);
     step("монитор: у демо подписано «Демо», а не реальный адаптер", (await text()).includes("Демо") && !(await text()).includes("Реальный адаптер"));
     const radioOk = await js(`(async () => {
       const g = await window.autoflash.radio.get();
@@ -161,13 +166,15 @@ async function run(win, outDir, app) {
 
     // ── Вкладка «Авто и прошивки» ──
     await goTo("2. Авто и прошивки", "cars");
+    await click("Что сделать");
+    await sleep(500);
     step("вкладка «Авто и прошивки» открыта", await waitText("Что вы хотите сделать?"));
     const tabsText = await text();
     step("вкладка 2: четыре раздела сверху", ["Что сделать", "Блоки автомобиля", "Поиск моделей", "Библиотека пакетов"].every((t) => tabsText.includes(t)));
     step("вкладка 2: карточки «Что вы хотите сделать?»", (await text()).includes("Что вы хотите сделать?") && (await text()).includes("Русификация") && (await text()).includes("Установка приложений"));
     step("вкладка 2: открытие объяснения русификации", await click("Как это сделать", { nth: 1 }) && await waitText("Что это такое", 4000));
-    step("русификация: простое объяснение и шаги для марки", (await text()).includes("✅ Подключено:") && (await text()).includes("перевод интерфейса магнитолы") && (await text()).includes("Как это сделать: Chery") && (await text()).includes("Настройки → Язык"));
-    step("русификация: выбор другой марки меняет шаги", await click("Haval") && await waitText("Как это сделать: Haval", 3000));
+    step("русификация: простое объяснение и шаги для марки", (await text()).includes("✅ Подключено:") && (await text()).includes("перевод интерфейса магнитолы") && (await text()).toLowerCase().includes("как это сделать: volkswagen") && (await text()).includes("Настройки → Язык"));
+    step("русификация: у подключённой машины нет выбора китайских марок", !(await text()).includes("Great Wall") && !(await text()).includes("Автомобиль не подключён"));
     await shot("03b-task-russify");
     await js("history.back()");
     await sleep(700);
@@ -353,6 +360,14 @@ async function run(win, outDir, app) {
 
     await click("Отключиться");
     step("демо: отключение", await waitText("Не подключён"));
+    await goTo("2. Авто и прошивки", "cars");
+    await click("Что сделать");
+    await sleep(500);
+    step("без подключения: задача «Русификация» предлагает выбрать марку", await click("Как это сделать", { nth: 1 }) && await waitText("Автомобиль не подключён", 4000) && await click("Haval") && await waitText("Шаги для Haval", 3000));
+    await js("history.back()");
+    await sleep(600);
+    await goTo("1. Подключение", "/");
+    await sleep(600);
     step("после отключения зона авто очищена", (await text()).includes("Подключитесь к адаптеру: автомобиль определится сам"));
 
     // ════════ Часть 2: настоящий канал (Wi-Fi/TCP) с STN-адаптером ════════

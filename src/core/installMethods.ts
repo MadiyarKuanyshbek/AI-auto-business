@@ -133,7 +133,8 @@ const GENERIC: InstallMethod = {
 };
 
 export function installMethodFor(make: string): InstallMethod {
-  return BY_MAKE[make] ?? GENERIC;
+  const key = Object.keys(BY_MAKE).find((k) => k.toLowerCase() === make.trim().toLowerCase());
+  return (key && BY_MAKE[key]) || GENERIC;
 }
 
 export const ANDROID_HEADUNIT_NOTE =

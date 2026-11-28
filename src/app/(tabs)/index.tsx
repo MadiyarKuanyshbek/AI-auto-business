@@ -193,7 +193,7 @@ export default function ConnectScreen() {
     };
     if (b.connected) {
       return [
-        { title: "Прошивка блоков", hint: "Обновить программу в блоках этого автомобиля", onPress: go("/cars/task", { kind: "firmware" }) },
+        { title: "Прошивка блоков", hint: "Блоки этого автомобиля и пакеты для них", onPress: go("/cars", { section: "blocks" }) },
         { title: "Русификация", hint: "Сделать интерфейс магнитолы на русском", kind: "ghost", onPress: go("/cars/task", { kind: "russify" }) },
         { title: "Установка приложений", hint: "Навигатор, музыка, видео на магнитоле", kind: "ghost", onPress: go("/cars/task", { kind: "apps" }) },
         { title: "Интерфейс и экраны", hint: "Как будет выглядеть салон", kind: "ghost", onPress: go("/interface") },
@@ -465,7 +465,7 @@ function ConnectedHero({ onGo }: { onGo: (path: string, params?: Record<string, 
         <>
           <Body style={{ fontSize: 17, fontWeight: "700" }}>Автомобиль: {title}</Body>
           <Body style={{ fontWeight: "700" }}>Что установить в эту машину?</Body>
-          <Button title="🔧 Прошивка блоков" onPress={() => onGo("/cars/task", { kind: "firmware" })} />
+          <Button title="🔧 Прошивка блоков" onPress={() => onGo("/cars", { section: "blocks" })} />
           <Button title="🇷🇺 Русификация" kind="ghost" onPress={() => onGo("/cars/task", { kind: "russify" })} />
           <Button title="📱 Установка приложений" kind="ghost" onPress={() => onGo("/cars/task", { kind: "apps" })} />
         </>

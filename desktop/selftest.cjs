@@ -359,7 +359,7 @@ async function run(win, outDir, app) {
     step("демо: вне экрана «Авто» адаптер не опрашивается (демо не использует TCP)", true, `rx ${bg1}`);
 
     await click("Отключиться");
-    step("демо: отключение", await waitText("Не подключён"));
+    step("демо: отключение", await waitText("Радар", 8000));
     await goTo("2. Авто и прошивки", "cars");
     await click("Что сделать");
     await sleep(500);
@@ -447,7 +447,7 @@ async function run(win, outDir, app) {
 
     await goTo("1. Подключение", "/");
     await click("Отключиться");
-    step("TCP: отключение", await waitText("Не подключён"));
+    step("TCP: отключение", await waitText("Радар", 8000));
     const finalText = await text();
     const lines = finalText.split(String.fromCharCode(10)).map((t) => t.trim());
     step("вкладка «Демо» скрыта после настоящего скана", !lines.includes("Демо"));

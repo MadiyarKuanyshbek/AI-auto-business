@@ -17,6 +17,7 @@ const COMMON_PIDS = {
 export const DEMO_VEHICLES: SimVehicle[] = [
   {
     label: "Volkswagen Golf 6 2.0 TDI (демо)",
+    short: "Golf 6",
     stn: true,
     vin: "WVWZZZ1KZBW123456",
     voltage: 12.7,
@@ -84,6 +85,7 @@ export const DEMO_VEHICLES: SimVehicle[] = [
   },
   {
     label: "BMW 320d F30 (демо)",
+    short: "BMW 320d",
     stn: true,
     vin: "WBA3D31050K567890",
     voltage: 12.5,
@@ -122,6 +124,7 @@ export const DEMO_VEHICLES: SimVehicle[] = [
   },
   {
     label: "Toyota Camry XV70 2.5 (демо)",
+    short: "Camry",
     stn: true,
     vin: "4T1B11HK5KU012345",
     voltage: 12.4,
@@ -161,6 +164,7 @@ export const DEMO_VEHICLES: SimVehicle[] = [
 
   {
     label: "Škoda Octavia 1.9 TDI 2005, K-Line KWP2000 (демо)",
+    short: "Octavia",
     bus: "kline",
     klineKind: "kwp",
     vin: "TMBDX41U852123456",
@@ -192,6 +196,7 @@ export const DEMO_VEHICLES: SimVehicle[] = [
   },
   {
     label: "Toyota Corolla 2001, K-Line ISO 9141-2 (демо)",
+    short: "Corolla",
     bus: "kline",
     klineKind: "iso9141",
     vin: "JTDBR32E710123456",
@@ -204,6 +209,7 @@ export const DEMO_VEHICLES: SimVehicle[] = [
   },
   {
     label: "Грузовой автомобиль, CAN 29 бит (демо)",
+    short: "Грузовик",
     bus: "can29",
     vin: "YV2RT40A1AB123456",
     voltage: 24.1,

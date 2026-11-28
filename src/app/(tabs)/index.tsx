@@ -125,7 +125,7 @@ export default function ConnectScreen() {
     };
     if (view === "demo") {
       logEvent("Демо: показываю виртуальные автомобили", false);
-      DEMO_VEHICLES.forEach((v, i) => setTimeout(() => add({ id: `demo-${i}`, kind: "car", label: v.label, sub: "Демо" }), 500 + i * 450));
+      DEMO_VEHICLES.forEach((v, i) => setTimeout(() => add({ id: `demo-${i}`, kind: "car", label: v.short ?? v.label, sub: v.label }), 500 + i * 450));
       setTimeout(() => token === scanToken.current && setRadarScanning(false), 500 + DEMO_VEHICLES.length * 450 + 600);
       return;
     }
@@ -231,15 +231,16 @@ export default function ConnectScreen() {
           ))}
         </View>
       ) : null}
-      {view === "demo" ? (
+      {view === "demo" && !ready ? (
         <Card tone="warn">
           <Body style={{ fontWeight: "700" }}>ДЕМО: виртуальные автомобили</Body>
           <Muted>Настоящий адаптер не используется, в реальную машину ничего не записывается. Подходит, чтобы показать приложение.</Muted>
         </Card>
-      ) : (
+      ) : view === "real" && !ready ? (
         <Muted>Реальный режим: ищу настоящие Wi‑Fi адаптеры OBD и магнитолы в вашей сети. Bluetooth и COM-порт добавляются кнопками под радаром.</Muted>
-      )}
+      ) : null}
 
+      {!ready ? (
       <Card>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <H2>Радар</H2>
@@ -258,8 +259,8 @@ export default function ConnectScreen() {
               >
                 <Text style={{ fontSize: 20 }}>{b.kind === "car" ? "🚗" : b.kind === "obd" ? "📡" : b.kind === "adb" ? "📺" : "🔵"}</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontWeight: "700" }}>{b.label}</Text>
-                  {b.sub ? <Muted>{b.connected ? "Подключено" : b.sub}</Muted> : null}
+                  <Text style={{ color: colors.text, fontWeight: "700" }}>{b.kind === "car" && b.sub ? b.sub : b.label}</Text>
+                  <Muted>{b.connected ? "Подключено" : b.kind === "car" ? "Виртуальный автомобиль" : b.kind === "adb" ? "Магнитола с открытой отладкой" : b.kind === "obd" ? "Wi‑Fi адаптер OBD" : "Bluetooth"}</Muted>
                 </View>
                 <Text style={{ color: colors.accent }}>›</Text>
               </Pressable>
@@ -271,9 +272,18 @@ export default function ConnectScreen() {
           {view === "real" ? <View style={{ flexGrow: 1 }}><Button title="Найти Bluetooth" kind="ghost" onPress={() => void pickWebBle()} disabled={!ble.supported} /></View> : null}
           {view === "real" && serialSupported ? <View style={{ flexGrow: 1 }}><Button title="COM / USB" kind="ghost" onPress={() => void connectSerial()} /></View> : null}
         </View>
+        {view === "real" && blips.length === 0 && !radarScanning ? (
+          <View style={{ gap: 4 }}>
+            <Body style={{ fontWeight: "700" }}>Пока ничего не найдено. Что сделать:</Body>
+            <Muted>1. Вставьте адаптер в разъём OBD под рулём и включите зажигание.</Muted>
+            <Muted>2. Для Bluetooth-адаптера нажмите «Найти Bluetooth», для кабеля «COM / USB».</Muted>
+            <Muted>3. Для Wi‑Fi адаптера подключите компьютер к его сети и нажмите «Искать снова».</Muted>
+          </View>
+        ) : null}
         {bleError ? <Body style={{ color: colors.bad }}>{bleError}</Body> : null}
       </Card>
-      {view === "real" ? <RadioPanel active={focused} /> : null}
+      ) : null}
+      {view === "real" && !ready ? <RadioPanel active={focused} /> : null}
       <ActionSheet
         visible={!!sheet}
         title={sheet?.connected ? `✅ Подключено: ${sheet.label}` : sheet?.label ?? ""}
@@ -282,23 +292,20 @@ export default function ConnectScreen() {
         onClose={() => setSheet(null)}
       />
 
-      <Card tone={ready ? "good" : connection.status === "error" ? "bad" : undefined}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <H2>Адаптер</H2>
-          {ready ? <Badge tone={connection.kind === "demo" ? "warn" : "good"} text={connection.kind === "demo" ? "Демо" : "Реальный адаптер"} /> : connection.status === "connecting" ? <Badge tone="accent" text="Подключение…" /> : <Badge text="Не подключён" />}
-        </View>
-        {ready ? <Body>{connection.label}</Body> : null}
-        {connection.status === "error" ? <Body style={{ color: colors.bad }}>{connection.message}</Body> : null}
-        {ready ? (
-          <>
-            {session.scanError ? <Body style={{ color: colors.bad }}>{session.scanError}</Body> : null}
-            <Button title="Определить автомобиль заново" kind="ghost" onPress={scan} loading={session.scanning} />
-            <Button title="Отключиться" kind="ghost" onPress={() => void session.disconnect()} disabled={session.scanning} />
-          </>
-        ) : null}
-      </Card>
+      {connection.status === "error" ? (
+        <Card tone="bad">
+          <Body style={{ fontWeight: "700" }}>Не удалось подключиться</Body>
+          <Body style={{ color: colors.bad }}>{connection.message}</Body>
+        </Card>
+      ) : null}
+      {connection.status === "connecting" ? (
+        <Card>
+          <Body style={{ fontWeight: "700" }}>Подключаюсь…</Body>
+          <Muted>{connection.label}</Muted>
+        </Card>
+      ) : null}
 
-      <VehicleZone onOpen={() => router.push("/cars")} />
+      <VehicleZone />
 
       {!ready && view === "real" ? <Button title={showManual ? "Скрыть ручное подключение" : "Подключить вручную"} kind="ghost" onPress={() => setShowManual((v) => !v)} /> : null}
 
@@ -370,9 +377,8 @@ export default function ConnectScreen() {
       {settings.hadRealScan || view === "demo" ? null : (
       <Card>
         <H2>Какой адаптер взять</H2>
-        <Muted>• Для диагностики: OBDLink CX/MX+, Vgate iCar Pro BLE, vLinker MC+/BM+.</Muted>
-        <Muted>• Дешёвые клоны ELM327 v2.1 часто зависают и теряют данные, на них возможны ошибки идентификации.</Muted>
-        <Muted>• Для прошивки блоков нужен отдельный интерфейс (J2534 или профильный программатор): ELM327 для записи не подходит.</Muted>
+        <Muted>• Только для диагностики (ошибки, данные): подойдёт обычный ELM327. Дешёвые клоны иногда зависают.</Muted>
+        <Muted>• Для записи прошивки нужен адаптер на чипе STN, например OBDLink CX или MX+. Через обычный ELM327 приложение прошивать не будет.</Muted>
       </Card>
       )}
       <LiveMonitor mode={view} active={focused} />
@@ -392,7 +398,7 @@ const KIND_TEXT = {
 const BUS_TEXT = { can11: "CAN 11 бит", can29: "CAN 29 бит", kline: "K-Line", j1850: "J1850", unknown: "не определена" } as const;
 
 /** Зона «Подключённый автомобиль»: какое авто определено и через что именно подключились. */
-function VehicleZone({ onOpen }: { onOpen: () => void }) {
+function VehicleZone() {
   const { connection, liveScan, scanning, progress } = useSession();
   const store = useStore();
   const ready = connection.status === "ready";
@@ -443,14 +449,13 @@ function VehicleZone({ onOpen }: { onOpen: () => void }) {
           {waiting.map((q) => <Muted key={q.id}>• {q.title}</Muted>)}
         </>
       ) : null}
-      <Button title="Открыть авто и прошивки" onPress={onOpen} />
     </Card>
   );
 }
 
 /** Крупный блок после подключения: подключение удалось, в какую машину и что можно установить. */
 function ConnectedHero({ onGo }: { onGo: (path: string, params?: Record<string, string>) => void }) {
-  const { connection, liveScan, scanning, progress } = useSession();
+  const { connection, liveScan, scanning, progress, scanError, runScan, disconnect } = useSession();
   if (connection.status !== "ready") return null;
   const demo = connection.kind === "demo";
   const title = liveScan ? vehicleTitle(liveScan) : null;
@@ -461,6 +466,7 @@ function ConnectedHero({ onGo }: { onGo: (path: string, params?: Record<string, 
         <Badge tone={demo ? "warn" : "good"} text={demo ? "Демо" : "Реальный адаптер"} />
       </View>
       <Muted>Подключено через: {connection.label}</Muted>
+      {scanError ? <Body style={{ color: colors.bad }}>{scanError}</Body> : null}
       {title ? (
         <>
           <Body style={{ fontSize: 17, fontWeight: "700" }}>Автомобиль: {title}</Body>
@@ -475,6 +481,10 @@ function ConnectedHero({ onGo }: { onGo: (path: string, params?: Record<string, 
           <Progress fraction={progress?.fraction ?? 0.05} label={progress?.step ?? (scanning ? "Идёт определение" : "Ожидание")} />
         </>
       )}
+      <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+        <View style={{ flexGrow: 1 }}><Button title="Определить заново" kind="ghost" onPress={() => void runScan()} loading={scanning} /></View>
+        <View style={{ flexGrow: 1 }}><Button title="Отключиться" kind="ghost" onPress={() => void disconnect()} disabled={scanning} /></View>
+      </View>
     </Card>
   );
 }

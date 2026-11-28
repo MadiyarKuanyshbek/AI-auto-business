@@ -32,6 +32,8 @@ export type SimVehicle = {
   label: string;
   /** Адаптер на чипе STN (умеет длинные сообщения STPX). */
   stn?: boolean;
+  /** Короткое название для радара. */
+  short?: string;
   /** Шина: CAN 11 бит (по умолчанию), CAN 29 бит или K-Line (ISO 9141-2 / KWP2000). */
   bus?: "can11" | "can29" | "kline";
   /** Для K-Line: "iso9141" (кадры 48 6B, VIN в 4-байтовых кадрах) или "kwp" (кадры 8N F1). */

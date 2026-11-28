@@ -214,7 +214,7 @@ export default function InterfaceDemoScreen() {
           </Card>
         </>
       ) : (
-        <Empty title="Выберите автомобиль" hint="Найдите модель в поиске справа: здесь появится салон с экранами, а ниже подробности о каждом файле." />
+        <Empty title="Выберите автомобиль" hint="Найдите модель в поиске: здесь появится салон с экранами, а ниже подробности о каждом файле." />
       )}
     </View>
   );
@@ -240,12 +240,10 @@ export default function InterfaceDemoScreen() {
     </Card>
   );
 
-  const sidePanel = (
-    <View style={{ gap: 10, width: "100%" }}>
-      {wide ? searchCard : null}
-
-      {query ? (
-        results.length === 0 ? (
+  // Результаты поиска: на широком экране справа, на узком сразу под полем поиска.
+  const searchResults = query ? (
+    <>
+      {results.length === 0 ? (
           <Empty title="Ничего не найдено" hint="Попробуйте название марки или модели, можно по-русски." />
         ) : (
           groups.map((g) => (
@@ -257,8 +255,8 @@ export default function InterfaceDemoScreen() {
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
                     {m.cars.map((c) => (
                       <Pressable key={c.id} testID={`gen-${c.id}`} onPress={() => pickCar(c)} style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: effectiveCarId === c.id ? colors.accent : colors.border, backgroundColor: effectiveCarId === c.id ? colors.cardAlt : "transparent" }}>
-                        <Text style={{ color: colors.text, fontWeight: "600" }}>{generationLabel(c)}</Text>
-                        <Text style={{ color: colors.muted, fontSize: 11 }}>{carYears(c)}</Text>
+                        <Text style={{ color: colors.text, fontWeight: "600" }}>{generationLabel(c) === "—" ? carYears(c) : generationLabel(c)}</Text>
+                        {generationLabel(c) === "—" ? null : <Text style={{ color: colors.muted, fontSize: 11 }}>{carYears(c)}</Text>}
                       </Pressable>
                     ))}
                   </View>
@@ -266,8 +264,15 @@ export default function InterfaceDemoScreen() {
               ))}
             </Card>
           ))
-        )
-      ) : !car ? (
+        )}
+    </>
+  ) : null;
+
+  const sidePanel = (
+    <View style={{ gap: 10, width: "100%" }}>
+      {wide ? searchCard : null}
+
+      {wide && query ? searchResults : !car ? (
         <>
           <H2>Марки ({ALL_MAKES.length})</H2>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
@@ -406,6 +411,7 @@ export default function InterfaceDemoScreen() {
   return (
     <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}>
       {searchCard}
+      {searchResults}
       {centerPanel}
       {sidePanel}
     </ScrollView>

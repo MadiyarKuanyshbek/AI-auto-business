@@ -315,6 +315,84 @@ ipcMain.handle("bluetooth:send-file", (_e, { file }) => {
 
 ipcMain.handle("bluetooth:open-settings", () => shell.openExternal("ms-settings:bluetooth"));
 
+// ───────────── USB-флешка для обновления магнитолы ─────────────
+// Только копирование выбранного файла на съёмный диск с проверкой SHA-256. Диск не форматируется, ничего не удаляется.
+let usbFile = null;
+
+function listRemovableDrives() {
+  return new Promise((resolve) => {
+    if (process.platform !== "win32") return resolve([]);
+    const script = "Get-Volume | Where-Object { $_.DriveType -eq 'Removable' -and $_.DriveLetter } | Select-Object DriveLetter,FileSystemLabel,FileSystem,Size,SizeRemaining | ConvertTo-Json -Compress";
+    const enc = Buffer.from(script, "utf16le").toString("base64");
+    execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", enc], { timeout: 20000, windowsHide: true, encoding: "utf8" }, (err, stdout) => {
+      if (err || !stdout.trim()) return resolve([]);
+      try {
+        const raw = JSON.parse(stdout);
+        const arr = Array.isArray(raw) ? raw : [raw];
+        resolve(
+          arr.map((d) => ({
+            letter: String(d.DriveLetter),
+            label: d.FileSystemLabel || "",
+            fileSystem: d.FileSystem || "",
+            size: Number(d.Size) || 0,
+            free: Number(d.SizeRemaining) || 0,
+          })),
+        );
+      } catch {
+        resolve([]);
+      }
+    });
+  });
+}
+
+function sha256File(file) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash("sha256");
+    fs.createReadStream(file).on("data", (c) => hash.update(c)).on("error", reject).on("end", () => resolve(hash.digest("hex")));
+  });
+}
+
+ipcMain.handle("usb:drives", () => listRemovableDrives());
+
+ipcMain.handle("usb:pick-file", async () => {
+  const r = await dialog.showOpenDialog(win, { title: "Выберите файл обновления для магнитолы", properties: ["openFile"] });
+  if (r.canceled || !r.filePaths[0]) return null;
+  usbFile = r.filePaths[0];
+  const st = fs.statSync(usbFile);
+  return { name: path.basename(usbFile), size: st.size };
+});
+
+// Для самопроверки: подставить файл без окна выбора.
+ipcMain.handle("usb:set-file-for-test", (_e, file) => {
+  if (!SELFTEST) return false;
+  usbFile = String(file);
+  return true;
+});
+
+ipcMain.handle("usb:copy", async (_e, { letter }) => {
+  if (typeof letter !== "string" || !/^[A-Za-z]$/.test(letter)) return { ok: false, error: "Некорректный диск" };
+  if (!usbFile || !fs.existsSync(usbFile)) return { ok: false, error: "Сначала выберите файл обновления" };
+  const drives = await listRemovableDrives();
+  const drive = drives.find((d) => d.letter.toUpperCase() === letter.toUpperCase());
+  if (!drive) return { ok: false, error: "Это не съёмный диск: копирование отменено" };
+  const size = fs.statSync(usbFile).size;
+  if (drive.free && size > drive.free) return { ok: false, error: "На флешке не хватает места" };
+  if (/fat32/i.test(drive.fileSystem) && size >= 4 * 1024 * 1024 * 1024) return { ok: false, error: "Файл больше 4 ГБ, а флешка в FAT32: отформатируйте её в exFAT" };
+  const dest = path.join(`${drive.letter.toUpperCase()}:\\`, path.basename(usbFile));
+  try {
+    const before = await sha256File(usbFile);
+    await fs.promises.copyFile(usbFile, dest);
+    const after = await sha256File(dest);
+    if (before !== after) {
+      fs.rmSync(dest, { force: true });
+      return { ok: false, error: "После копирования файл не совпал с оригиналом: флешка неисправна, файл удалён с неё" };
+    }
+    return { ok: true, dest, sha256: after };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
 // ───────────── ADB: установка приложений на магнитолу по Wi-Fi ─────────────
 // Запускаем только adb.exe из поставки и только заранее разрешённые команды. Файл .apk выбирается окном системы.
 function adbPath() {

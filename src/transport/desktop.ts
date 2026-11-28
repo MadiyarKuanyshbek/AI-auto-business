@@ -26,6 +26,12 @@ export type DesktopBridge = {
     choose(file: string): Promise<string | null>;
     openFolder(): Promise<string>;
   };
+  usb: {
+    drives(): Promise<{ letter: string; label: string; fileSystem: string; size: number; free: number }[]>;
+    pickFile(): Promise<{ name: string; size: number } | null>;
+    copy(letter: string): Promise<{ ok: true; dest: string; sha256: string } | { ok: false; error: string }>;
+    setFileForTest(file: string): Promise<boolean>;
+  };
   bluetooth: {
     sendFile(file: string): Promise<{ ok: boolean; error?: string }>;
     openSettings(): Promise<void>;

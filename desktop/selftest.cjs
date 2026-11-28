@@ -115,6 +115,8 @@ async function run(win, outDir, app) {
     step("безопасность: задана политика CSP (только свои скрипты)", typeof csp === "string" && csp.includes("default-src 'self'") && csp.includes("script-src 'self'"), String(csp).slice(0, 80));
     const tcpGuard = await js(`window.autoflash.tcp.connect("8.8.8.8", 53).then(() => "connected", (e) => String(e.message))`);
     step("безопасность: подключение к адресам в интернете запрещено (только локальная сеть)", /локальной сети/.test(String(tcpGuard)), String(tcpGuard).slice(0, 100));
+    const pageText = await text();
+    step("способы подключения: Bluetooth, Wi‑Fi, USB и OBD-сканер описаны", ["Bluetooth", "Wi‑Fi", "USB-кабель", "OBD-сканер", "J2534"].every((t) => pageText.includes(t)));
     step("настройка: определение модели по VIN через интернет можно выключить", (await text()).includes("Определять модель по VIN через интернет"));
 
     await shot("01-connect");
@@ -425,6 +427,12 @@ async function run(win, outDir, app) {
     step("библиотека приложений: показана на экране с кнопками скачивания", (await text()).includes("Библиотека приложений") && (await text()).includes("RuStore (магазин приложений)") && (await text()).includes("Настройки Bluetooth Windows"));
     const badDl = await js(`window.autoflash.apps.download("http://evil.example/x.apk").then((r) => JSON.stringify(r))`);
     step("библиотека приложений: чужой адрес скачать нельзя (только список официальных)", String(badDl).includes('"ok":false'), String(badDl).slice(0, 80));
+    const drivesRes = await js(`window.autoflash.usb.drives().then((d) => Array.isArray(d))`);
+    step("флешка: список съёмных дисков читается", drivesRes === true);
+    const badCopy = await js(`window.autoflash.usb.copy("Z").then((r) => JSON.stringify(r))`);
+    step("флешка: копирование без файла и на не съёмный диск отклоняется", String(badCopy).includes('"ok":false'), String(badCopy).slice(0, 90));
+    step("флешка: блок обновления с флешки показан на экране", (await text()).includes("Обновление магнитолы с USB-флешки") && (await text()).includes("Скопировать на флешку и проверить"));
+    step("USB-кабель: объяснено подключение магнитолы по USB", (await text()).includes("USB-кабелем") && (await text()).includes("Отладка по USB"));
 
     step("приложения: ввод адреса вручную", await click("Ввести адрес вручную"));
     step("приложения: поле адреса", await fill("Адрес магнитолы", "abc"));

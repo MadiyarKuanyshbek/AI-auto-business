@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, Pressable, Switch, Text, View } from "react-native";
+import { parseDevices } from "../../core/adb";
 import { matchScannedCar } from "../../core/cars";
 import { DEMO_VEHICLES } from "../../core/sim/vehicles";
 import { useSession } from "../../session";
@@ -139,6 +140,12 @@ export default function ConnectScreen() {
         logEvent(`Радар: найдено ${d.port === 5555 ? "устройство Android (ADB)" : "Wi‑Fi адаптер OBD"} ${d.ip}:${d.port}`);
       }
       if (list.length === 0) logEvent("Радар: устройств в сети не найдено (Wi‑Fi адаптеры и магнитолы)");
+      // Магнитолы, подключённые USB-кабелем (отладка по USB), видны через ADB.
+      const usb = parseDevices((await bridge?.adb.run({ op: "devices" }))?.out ?? "").filter((d) => !d.id.includes(":") && !d.id.startsWith("emulator"));
+      for (const d of usb) {
+        add({ id: `adbusb-${d.id}`, kind: "adb", label: "Магнитола по USB", sub: d.id });
+        logEvent(`Радар: найдена магнитола по USB-кабелю ${d.id}`);
+      }
     } catch {
       // Сеть недоступна: остаются демо-автомобили и ручное подключение.
     }
@@ -202,11 +209,11 @@ export default function ConnectScreen() {
       ];
     }
     if (b.kind === "adb") {
-      const address = b.id.slice(4);
+      const via: Record<string, string> = b.id.startsWith("adbusb-") ? { usb: b.id.slice(7) } : { address: b.id.slice(4) };
       return [
-        { title: "Установить приложения", hint: "Яндекс Навигатор, 2ГИС, VLC и другие", onPress: go("/cars/apps", { address }) },
-        { title: "Русификация: выбор языка", hint: "Откроет выбор языка на экране магнитолы", kind: "ghost", onPress: go("/cars/apps", { address, action: "locale" }) },
-        { title: "Настройки магнитолы", kind: "ghost", onPress: go("/cars/apps", { address, action: "settings" }) },
+        { title: "Установить приложения", hint: "Яндекс Навигатор, 2ГИС, VLC и другие", onPress: go("/cars/apps", via) },
+        { title: "Русификация: выбор языка", hint: "Откроет выбор языка на экране магнитолы", kind: "ghost", onPress: go("/cars/apps", { ...via, action: "locale" }) },
+        { title: "Настройки магнитолы", kind: "ghost", onPress: go("/cars/apps", { ...via, action: "settings" }) },
       ];
     }
     if (b.kind === "obd") return [{ title: "Подключиться к адаптеру", hint: "Автомобиль определится сам", onPress: () => void sheetConnect(b) }];
@@ -383,6 +390,19 @@ export default function ConnectScreen() {
         <Muted>• Для записи прошивки нужен адаптер на чипе STN, например OBDLink CX или MX+. Через обычный ELM327 приложение прошивать не будет.</Muted>
       </Card>
       )}
+      {!ready && view === "real" ? (
+        <Card>
+          <H2>Способы подключения</H2>
+          <Body style={{ fontWeight: "700" }}>🔵 Bluetooth</Body>
+          <Muted>Адаптер OBD: прошивка и диагностика (BLE находится кнопкой «Найти Bluetooth», обычный ELM327 сначала связывается в Windows и подключается как COM). Файл .apk можно отправить на магнитолу мастером Windows.</Muted>
+          <Body style={{ fontWeight: "700" }}>📶 Wi‑Fi</Body>
+          <Muted>Wi‑Fi адаптер OBD: диагностика и прошивка. Магнитола с отладкой: приложения и русификация (ADB).</Muted>
+          <Body style={{ fontWeight: "700" }}>🔌 USB-кабель</Body>
+          <Muted>USB-адаптер OBD (COM): диагностика и прошивка. Магнитола по USB-кабелю с отладкой: приложения и русификация. Флешка: файл обновления для штатной магнитолы.</Muted>
+          <Body style={{ fontWeight: "700" }}>🔧 OBD-сканер</Body>
+          <Muted>Адаптеры на чипах ELM327 и STN поддерживаются (STN нужен для записи). Профессиональные сканеры с интерфейсом J2534 (Autel, Launch, Tactrix) пока не поддерживаются.</Muted>
+        </Card>
+      ) : null}
       <Card>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <View style={{ flex: 1 }}>

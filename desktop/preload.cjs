@@ -36,6 +36,12 @@ contextBridge.exposeInMainWorld("autoflash", {
     choose: (file) => ipcRenderer.invoke("apps:choose", { file }),
     openFolder: () => ipcRenderer.invoke("apps:open-folder"),
   },
+  usb: {
+    drives: () => ipcRenderer.invoke("usb:drives"),
+    pickFile: () => ipcRenderer.invoke("usb:pick-file"),
+    copy: (letter) => ipcRenderer.invoke("usb:copy", { letter }),
+    setFileForTest: (file) => ipcRenderer.invoke("usb:set-file-for-test", file),
+  },
   bluetooth: {
     sendFile: (file) => ipcRenderer.invoke("bluetooth:send-file", { file }),
     openSettings: () => ipcRenderer.invoke("bluetooth:open-settings"),

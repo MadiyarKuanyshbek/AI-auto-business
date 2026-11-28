@@ -15,7 +15,7 @@ export default function AppsScreen() {
   const bridge = desktopBridge();
   const router = useRouter();
   const { liveScan, connection } = useSession();
-  const params = useLocalSearchParams<{ address?: string; action?: string }>();
+  const params = useLocalSearchParams<{ address?: string; usb?: string; action?: string }>();
   const [address, setAddress] = useState(params.address ?? "");
   const [devices, setDevices] = useState<AdbDevice[]>([]);
   const [serial, setSerial] = useState<string | null>(null);
@@ -30,6 +30,11 @@ export default function AppsScreen() {
   const [showManual, setShowManual] = useState(false);
   const [lib, setLib] = useState<{ id: string; title: string; purpose: string; size: string; hasChecksum: boolean; downloaded: boolean; file: string | null }[]>([]);
   const [libBusy, setLibBusy] = useState<string | null>(null);
+  const [drives, setDrives] = useState<{ letter: string; label: string; fileSystem: string; size: number; free: number }[]>([]);
+  const [usbFile, setUsbFile] = useState<{ name: string; size: number } | null>(null);
+  const [usbDrive, setUsbDrive] = useState<string | null>(null);
+  const [usbBusy, setUsbBusy] = useState(false);
+  const [usbMessage, setUsbMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [libMessage, setLibMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   const carTitle = liveScan ? vehicleTitle(liveScan) : null;
@@ -86,6 +91,34 @@ export default function AppsScreen() {
     [bridge, loadPackages],
   );
 
+  /** Магнитола, подключённая USB-кабелем: ищем её среди устройств ADB. */
+  const connectUsb = useCallback(
+    async (id: string, action?: string) => {
+      if (!bridge) return false;
+      setBusy(true);
+      setMessage(null);
+      const list = parseDevices((await bridge.adb.run({ op: "devices" })).out);
+      setDevices(list);
+      setBusy(false);
+      const dev = list.find((d) => d.id === id);
+      if (!dev) {
+        setMessage({ ok: false, text: "Магнитола по USB не найдена: проверьте кабель и включите на магнитоле отладку по USB." });
+        return false;
+      }
+      if (dev.state !== "device") {
+        setMessage({ ok: false, text: "Магнитола не разрешила отладку: подтвердите запрос «Разрешить отладку по USB» на её экране и нажмите «Искать магнитолу снова»." });
+        return false;
+      }
+      logEvent(`Магнитола по USB ${id}: подключено`);
+      setSerial(id);
+      setMessage({ ok: true, text: `Подключение удалось: магнитола по USB-кабелю (${id})` });
+      void loadPackages(id);
+      if (action === "locale" || action === "settings") await bridge.adb.run({ op: action, serial: id });
+      return true;
+    },
+    [bridge, loadPackages],
+  );
+
   const findHeadUnits = useCallback(
     async (autoConnect: boolean) => {
       if (!bridge) return;
@@ -101,24 +134,28 @@ export default function AppsScreen() {
       setSearching(false);
       setSearched(true);
       logEvent(list.length ? `Магнитола: найдено устройств: ${list.length}` : "Магнитола: в сети не найдена");
+      // Подключённая USB-кабелем магнитола выбирается без адреса.
+      const usb = parseDevices((await bridge.adb.run({ op: "devices" })).out).filter((d) => !d.id.includes(":"));
+      if (autoConnect && usb.length === 1 && list.length === 0) return void (await connectUsb(usb[0].id));
       if (autoConnect && list.length === 1) await connectTo(`${list[0].ip}:${list[0].port}`);
     },
-    [bridge, connectTo],
+    [bridge, connectTo, connectUsb],
   );
 
   // При открытии: если пришли с радара, подключаемся по переданному адресу, иначе сами ищем магнитолу в сети.
   const started = useRef<string | null>(null);
   useEffect(() => {
-    const key = `${params.address ?? ""}|${params.action ?? ""}`;
+    const key = `${params.address ?? ""}|${params.usb ?? ""}|${params.action ?? ""}`;
     if (!bridge || demo || started.current === key) return;
     started.current = key;
     const t = setTimeout(() => {
       void refresh();
-      if (params.address) void connectTo(params.address, params.action);
+      if (params.usb) void connectUsb(params.usb, params.action);
+      else if (params.address) void connectTo(params.address, params.action);
       else void findHeadUnits(true);
     }, 150);
     return () => clearTimeout(t);
-  }, [bridge, demo, params.address, params.action, refresh, connectTo, findHeadUnits]);
+  }, [bridge, demo, params.address, params.usb, params.action, refresh, connectTo, connectUsb, findHeadUnits]);
 
   const loadLibrary = useCallback(async () => {
     if (!bridge) return;
@@ -129,6 +166,37 @@ export default function AppsScreen() {
     const t = setTimeout(() => void loadLibrary(), 100);
     return () => clearTimeout(t);
   }, [loadLibrary]);
+
+  async function refreshDrives() {
+    if (!bridge) return;
+    const list = await bridge.usb.drives();
+    setDrives(list);
+    setUsbDrive((cur) => (cur && list.some((d) => d.letter === cur) ? cur : list[0]?.letter ?? null));
+    if (list.length === 0) setUsbMessage({ ok: false, text: "Флешка не найдена: вставьте её в USB-порт ноутбука и нажмите «Найти флешку»." });
+    else setUsbMessage(null);
+  }
+
+  async function pickUsbFile() {
+    if (!bridge) return;
+    const f = await bridge.usb.pickFile();
+    if (f) setUsbFile(f);
+  }
+
+  async function copyToUsb() {
+    if (!bridge || !usbDrive) return;
+    setUsbBusy(true);
+    setUsbMessage(null);
+    logEvent(`Флешка ${usbDrive}: копирую ${usbFile?.name ?? "файл"}…`);
+    const r = await bridge.usb.copy(usbDrive);
+    setUsbBusy(false);
+    if (r.ok) {
+      setUsbMessage({ ok: true, text: `Готово: файл скопирован на ${r.dest} и проверен (SHA-256 ${r.sha256.slice(0, 12)}…). Безопасно извлеките флешку, вставьте в магнитолу и запустите обновление из её настроек.` });
+      logEvent(`Флешка ${usbDrive}: файл скопирован и проверен`);
+    } else {
+      setUsbMessage({ ok: false, text: r.error });
+      logEvent(`Флешка ${usbDrive}: ошибка копирования`);
+    }
+  }
 
   async function downloadApp(id: string, title: string) {
     if (!bridge) return;
@@ -215,13 +283,13 @@ export default function AppsScreen() {
           <Badge tone={serial ? "good" : searching || busy ? "accent" : "warn"} text={serial ? "Подключено" : searching || busy ? "Поиск" : "Нет связи"} />
         </View>
         <Muted>Автомобиль: {carTitle ?? "не выбран"}{demo ? " (демо)" : ""}</Muted>
-        {serial ? <Muted>Магнитола: {serial}. Ниже выберите, что установить.</Muted> : null}
+        {serial ? <Muted>Магнитола {serial.includes(":") ? `по Wi‑Fi (${serial})` : `по USB-кабелю (${serial})`}. Ниже выберите, что установить.</Muted> : null}
         {demo ? <Muted>В демо-режиме приложения на магнитолу не ставятся: нужна настоящая магнитола в вашей Wi‑Fi сети.</Muted> : null}
         {message ? <Badge tone={message.ok ? "good" : "bad"} text={message.text} /> : null}
 
         {!serial ? (
           <>
-            <Muted>Ноутбук и магнитола должны быть в одной Wi‑Fi сети (например, в точке доступа телефона). На магнитоле должна быть включена «Отладка по Wi‑Fi».</Muted>
+            <Muted>Два способа: по Wi‑Fi (ноутбук и магнитола в одной сети, например в точке доступа телефона, на магнитоле включена «Отладка по Wi‑Fi») или USB-кабелем (на магнитоле включена «Отладка по USB», подтвердите запрос на её экране).</Muted>
             {found.map((d) => (
               <Button key={`${d.ip}:${d.port}`} title={`Подключиться к магнитоле ${d.ip}`} disabled={busy} onPress={() => void connectTo(`${d.ip}:${d.port}`)} />
             ))}
@@ -274,6 +342,23 @@ export default function AppsScreen() {
           <View style={{ flexGrow: 1 }}><Button title="Открыть папку с файлами" kind="ghost" onPress={() => void bridge.apps.openFolder()} /></View>
           <View style={{ flexGrow: 1 }}><Button title="Настройки Bluetooth Windows" kind="ghost" onPress={() => void bridge.bluetooth.openSettings()} /></View>
         </View>
+      </Card>
+
+      <H2>Обновление магнитолы с USB-флешки</H2>
+      <Card>
+        <Muted>Для штатных магнитол: файл обновления берётся у производителя или дилера, копируется на флешку, и магнитола ставит его сама. Приложение копирует файл и проверяет его после записи. Флешка не форматируется и ничего с неё не удаляется. Формат флешки: FAT32 (файлы до 4 ГБ) или exFAT.</Muted>
+        <Button title={usbFile ? `Файл: ${usbFile.name} (${(usbFile.size / 1048576).toFixed(1)} МБ)` : "Выбрать файл обновления"} kind="ghost" onPress={() => void pickUsbFile()} />
+        <Button title="Найти флешку" kind="ghost" onPress={() => void refreshDrives()} />
+        {drives.map((d) => (
+          <Pressable key={d.letter} onPress={() => setUsbDrive(d.letter)}>
+            <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+              <Badge tone={usbDrive === d.letter ? "good" : "muted"} text={usbDrive === d.letter ? "Выбрана" : "Выбрать"} />
+              <Text style={{ color: colors.text }}>{d.letter}: {d.label || "без имени"} · {d.fileSystem || "?"} · свободно {(d.free / 1073741824).toFixed(1)} ГБ</Text>
+            </View>
+          </Pressable>
+        ))}
+        <Button title={usbBusy ? "Копирую и проверяю…" : "Скопировать на флешку и проверить"} disabled={usbBusy || !usbFile || !usbDrive} onPress={() => void copyToUsb()} />
+        {usbMessage ? <Badge tone={usbMessage.ok ? "good" : "bad"} text={usbMessage.text} /> : null}
       </Card>
 
       {serial ? (

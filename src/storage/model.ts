@@ -1,6 +1,30 @@
 import type { VehicleScan } from "../core/scanner";
 import { resolveModelYear } from "../core/vin";
 
+/** Снимок настроек автомобиля при подключении: способ связи, адаптер и значения настроек блоков (кодирование). */
+export type VehicleSnapshot = {
+  at: number;
+  /** Через что подключались: ble, wifi, serial, webbluetooth, demo. */
+  via: string;
+  label: string;
+  adapter: { chip: string; protocol: string; bus: string; voltage: number | null };
+  /** Значения настроек блоков по пакетам кодирования, которые подошли к этой машине. */
+  coding: { pkgId: string; pkgTitle: string; ecuName: string; txId: string; did: number; value: number[] }[];
+  dtcCount: number;
+};
+
+/** Снимок магнитолы (Android): модель, версия, процессор, язык, установленные приложения. */
+export type HeadUnitSnapshot = {
+  id: string;
+  /** VIN автомобиля, к которому относится магнитола (пусто, если машина не была подключена). */
+  vin: string;
+  at: number;
+  via: "wifi" | "usb";
+  device: string;
+  props: Record<string, string>;
+  packages: string[];
+};
+
 export type VehicleRec = {
   id: string;
   vin: string;
@@ -8,6 +32,8 @@ export type VehicleRec = {
   createdAt: number;
   /** Последние сканирования (новые — в конце). */
   scans: VehicleScan[];
+  /** Снимки настроек при подключениях (новые — в конце). */
+  snapshots?: VehicleSnapshot[];
 };
 
 export type Settings = {
@@ -35,6 +61,21 @@ export type QueueItem = { id: string; carId: string; carTitle: string; themeId: 
 /** Запись о кодировании блока: что было и что стало (по ней можно вернуть прежние настройки). */
 export type CodingRecord = { id: string; vin: string; ecuName: string; txId: string; did: number; pkgId: string; pkgTitle: string; before: number[]; after: number[]; at: number };
 
+/** Запись журнала файлов: что найдено, откуда скачано, для какой машины и что с этим сделано. */
+export type FileLogEntry = {
+  id: string;
+  at: number;
+  /** Тип файла: прошивка, кодирование, приложение, обновление магнитолы, прочее. */
+  kind: "firmware" | "coding" | "apk" | "headunit" | "other";
+  action: "downloaded" | "accepted" | "rejected" | "installed" | "restored" | "uninstalled";
+  name: string;
+  source?: string;
+  sha256?: string;
+  size?: number;
+  car?: { title: string; vin: string };
+  note?: string;
+};
+
 export type AppData = {
   settings: Settings;
   /** Загруженные и созданные пакеты прошивки (сырой JSON; проверяются при чтении). */
@@ -47,9 +88,15 @@ export type AppData = {
   queue: QueueItem[];
   /** Журнал кодирования блоков. */
   coding: CodingRecord[];
+  /** Снимки магнитол, подключённых по ADB. */
+  headUnits: HeadUnitSnapshot[];
+  /** Журнал файлов: откуда что скачано, для какой машины и что сделано. */
+  fileLog: FileLogEntry[];
+  /** Оценки источников по домену: влияют на порядок и показ результатов поиска. */
+  sourceRatings: Record<string, "good" | "bad">;
 };
 
-export const EMPTY_DATA: AppData = { settings: DEFAULT_SETTINGS, packages: [], installs: [], vehicles: [], media: {}, queue: [], coding: [] };
+export const EMPTY_DATA: AppData = { settings: DEFAULT_SETTINGS, packages: [], installs: [], vehicles: [], media: {}, queue: [], coding: [], headUnits: [], fileLog: [], sourceRatings: {} };
 
 export const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
@@ -73,9 +120,16 @@ export function sanitizeData(raw: unknown): AppData {
     },
     packages: Array.isArray(r.packages) ? r.packages.filter((x) => x && typeof x === "object") : [],
     installs: arr<InstallRecord>(r.installs),
-    vehicles: arr<VehicleRec>(r.vehicles).map((v) => ({ ...v, scans: Array.isArray(v.scans) ? v.scans : [] })),
+    vehicles: arr<VehicleRec>(r.vehicles).map((v) => ({ ...v, scans: Array.isArray(v.scans) ? v.scans : [], snapshots: Array.isArray(v.snapshots) ? v.snapshots : [] })),
     media,
     queue: arr<QueueItem>(r.queue).filter((q) => typeof q.carId === "string" && typeof q.fileName === "string"),
+    fileLog: arr<FileLogEntry>(r.fileLog).filter((f) => typeof f.name === "string" && typeof f.action === "string"),
+    sourceRatings: ((o) => {
+      const out: Record<string, "good" | "bad"> = {};
+      if (o && typeof o === "object") for (const [k, v] of Object.entries(o)) if (v === "good" || v === "bad") out[k] = v;
+      return out;
+    })((r as { sourceRatings?: unknown }).sourceRatings),
+    headUnits: arr<HeadUnitSnapshot>(r.headUnits).filter((h) => typeof h.device === "string" && typeof h.props === "object"),
     coding: arr<CodingRecord>(r.coding).filter((c) => typeof c.txId === "string" && Array.isArray(c.before) && Array.isArray(c.after)),
   };
 }

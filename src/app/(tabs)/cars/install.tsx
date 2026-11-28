@@ -6,6 +6,7 @@ import { installChecks, installPackage, readBackup, restoreBackup, type InstallO
 import { sha256Hex } from "../../../core/sha256";
 import { useSession } from "../../../session";
 import { useStore } from "../../../storage/store";
+import { desktopBridge } from "../../../transport/desktop";
 import { vehicleTitle } from "../../../storage/model";
 import { Badge, Body, Button, Card, Empty, H2, Muted, Progress, Row, Screen, colors } from "../../../ui/kit";
 
@@ -21,7 +22,7 @@ function formatDuration(seconds: number) {
 
 export default function InstallScreen() {
   const { pkg: pkgId, version, ecu: ecuId } = useLocalSearchParams<{ pkg: string; version: string; ecu: string }>();
-  const { liveScan, packages, elm, connection, runScan } = useSession();
+  const { liveScan, packages, elm, connection, runScan, exclusive } = useSession();
   const store = useStore();
 
   const loaded = packages.find((p) => p.pkg.id === pkgId && p.pkg.version === version);
@@ -81,14 +82,32 @@ export default function InstallScreen() {
     setNote(null);
     setFraction(0);
     try {
-      const b = await readBackup(elm!, ecu!, loaded!.pkg, (_s, f) => setFraction(f));
+      const b = await exclusive("Чтение оригинальной прошивки", () => readBackup(elm!, ecu!, loaded!.pkg, (_s, f) => setFraction(f)));
       setBackup(b);
+      // Без сохранённой на диск копии оригинала запись не начинаем.
+      if (!(await saveBackupToDisk(b))) return null;
       return b;
     } catch (e) {
       setNote(`Не удалось прочитать оригинал: ${e instanceof Error ? e.message : "ошибка"}`);
       return null;
     } finally {
       setBusy(null);
+    }
+  }
+
+  /** Копия оригинала прошивки уходит на диск отдельным файлом: следующие установки её не затрут. */
+  async function saveBackupToDisk(b: Uint8Array): Promise<boolean> {
+    const bridge = desktopBridge();
+    if (!bridge || !liveScan || !ecu || !loaded) return true;
+    try {
+      let bin = "";
+      for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode(...b.subarray(i, i + 0x8000));
+      const meta = await bridge.fwbackup.save({ vin: liveScan.vin ?? "", ecuName: ecu.name, txId: ecu.txId, software: ecu.ident.supplierSoftwareNumber ?? ecu.ident.softwareNumber ?? "unknown", pkgId: loaded.pkg.id, pkgVersion: loaded.pkg.version, dataBase64: btoa(bin) });
+      setNote(`Оригинальная прошивка блока сохранена на диск: ${meta.file}`);
+      return true;
+    } catch (e) {
+      setNote(`Не удалось сохранить копию оригинала на диск, запись не начата: ${e instanceof Error ? e.message : "ошибка"}`);
+      return false;
     }
   }
 
@@ -100,14 +119,17 @@ export default function InstallScreen() {
     if (!b) return;
     setBusy("Установка");
     setFraction(0);
-    const result = await installPackage({ ...req, backup: b }, (s, f) => {
-      setBusy(s);
-      setFraction(f);
-    });
+    const result = await exclusive("Запись прошивки", () =>
+      installPackage({ ...req, backup: b }, (s, f) => {
+        setBusy(s);
+        setFraction(f);
+      }),
+    );
     setOutcome(result);
     setBusy(null);
     if (result.status === "success" && liveScan!.vin) {
       store.addInstall({ vin: liveScan!.vin, ecuTxId: ecu!.txId, packageId: loaded!.pkg.id, version: loaded!.pkg.version, at: nowMs(), softwareAfter: result.newSoftware });
+      store.addFileLog({ kind: loaded!.pkg.category === "interface" ? "other" : "firmware", action: "installed", name: `${loaded!.pkg.title} v${loaded!.pkg.version}`, car: { title: vehicleTitle(liveScan!), vin: liveScan!.vin ?? "" }, note: `Блок ${ecu!.name}: ПО ${ecu!.ident.supplierSoftwareNumber ?? ecu!.ident.softwareNumber ?? "?"} → ${result.newSoftware ?? "?"}. Оригинал сохранён на диск.` });
       void runScan(); // обновляем данные об авто: у блока теперь новый номер ПО
     }
   }
@@ -115,7 +137,7 @@ export default function InstallScreen() {
   async function recover() {
     setBusy("Восстановление оригинала");
     setFraction(0);
-    const r = await restoreBackup(req, (_s, f) => setFraction(f));
+    const r = await exclusive("Возврат прежней прошивки", () => restoreBackup(req, (_s, f) => setFraction(f)));
     setNote(r.ok ? "Оригинальная прошивка записана обратно." : `Не удалось восстановить: ${r.error}`);
     setBusy(null);
   }

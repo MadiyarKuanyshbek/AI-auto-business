@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { parseCodingPackage, type CodingPackage } from "./core/coding";
+import { codingFitsEcu, parseCodingPackage, readCoding, type CodingPackage } from "./core/coding";
 import { Elm327 } from "./core/elm327";
 import { parsePackage, type FirmwarePackage } from "./core/package";
 import { deepScan, scanVehicle, type VehicleScan } from "./core/scanner";
@@ -32,6 +32,15 @@ type Session = {
   packages: LoadedPackage[];
   /** Пакеты кодирования (настройки блоков) из библиотеки. */
   codingPackages: CodingPackage[];
+  /** Название операции, которая сейчас занимает адаптер (пусто, если адаптер свободен). */
+  busy: string | null;
+  /**
+   * Выполняет операцию с адаптером строго по очереди: определение автомобиля, прошивка, кодирование и чтение данных
+   * не могут идти одновременно и сбить друг другу адрес блока.
+   */
+  exclusive<T>(label: string, fn: () => Promise<T>): Promise<T>;
+  /** Свободен ли адаптер прямо сейчас (для фонового опроса, который не должен мешать). */
+  isIdle(): boolean;
   connect(transport: Transport): Promise<boolean>;
   connectDemo(index: number): Promise<boolean>;
   disconnect(): Promise<void>;
@@ -54,7 +63,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [scanError, setScanError] = useState<string | null>(null);
   const elmRef = useRef<Elm327 | null>(null);
   const kindRef = useRef<Transport["kind"] | null>(null);
+  const labelRef = useRef("");
+  const codingRef = useRef<CodingPackage[]>([]);
   const runScanRef = useRef<() => Promise<VehicleScan | null>>(async () => null);
+  const lockQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const busyCount = useRef(0);
+  const [busy, setBusy] = useState<string | null>(null);
   const connectSeq = useRef(0); // номер последней попытки подключения: старые попытки отменяются
   const [elmState, setElmState] = useState<Elm327 | null>(null);
 
@@ -84,6 +98,27 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
     return out;
   }, [showDemo, store.data.packages]);
+
+  useEffect(() => {
+    codingRef.current = codingPackages;
+  }, [codingPackages]);
+
+  const exclusive = useCallback(<T,>(label: string, fn: () => Promise<T>): Promise<T> => {
+    busyCount.current++;
+    const run = async () => {
+      setBusy(label);
+      try {
+        return await fn();
+      } finally {
+        busyCount.current--;
+        if (busyCount.current === 0) setBusy(null);
+      }
+    };
+    const p = lockQueue.current.then(run, run);
+    lockQueue.current = p.catch(() => undefined);
+    return p;
+  }, []);
+  const isIdle = useCallback(() => busyCount.current === 0, []);
 
   const disconnect = useCallback(async () => {
     connectSeq.current++;
@@ -119,6 +154,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         });
         elmRef.current = elm;
         kindRef.current = transport.kind;
+        labelRef.current = transport.label;
         setElmState(elm);
         setConnection({ status: "ready", label: transport.label, kind: transport.kind });
         // Сразу определяем автомобиль: пользователю не нужно ничего нажимать.
@@ -138,7 +174,38 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [connect],
   );
 
-  const runScan = useCallback(async () => {
+  /**
+   * Сразу после определения автомобиля запоминаем его настройки для будущей работы: способ подключения, адаптер и значения
+   * настроек блоков по подходящим пакетам кодирования. Ошибки чтения здесь не мешают: снимок просто будет неполным.
+   */
+  const takeSnapshot = useCallback(
+    async (elm: Elm327, result: VehicleScan) => {
+      if (!result.vin) return;
+      const coding: NonNullable<Parameters<typeof store.saveSnapshot>[1]>["coding"] = [];
+      for (const pkg of codingRef.current) {
+        for (const ecu of result.ecus) {
+          if (!codingFitsEcu(pkg, ecu)) continue;
+          try {
+            if (elmRef.current !== elm) return;
+            coding.push({ pkgId: pkg.id, pkgTitle: pkg.title, ecuName: ecu.name, txId: ecu.txId, did: pkg.target.did, value: await readCoding(elm, ecu, pkg) });
+          } catch {
+            // блок не отдал настройки: пропускаем
+          }
+        }
+      }
+      store.saveSnapshot(result.vin, {
+        at: Date.now(),
+        via: kindRef.current ?? "unknown",
+        label: labelRef.current,
+        adapter: { chip: result.adapter.chip, protocol: result.adapter.protocol, bus: result.adapter.bus, voltage: result.adapter.voltage },
+        coding,
+        dtcCount: result.dtcs.length,
+      });
+    },
+    [store],
+  );
+
+  const runScanInner = useCallback(async () => {
     const elm = elmRef.current;
     if (!elm) return null;
     setScanning(true);
@@ -147,9 +214,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       const result = await scanVehicle(elm, { online: store.data.settings.onlineVin !== false, onProgress: (step, fraction) => setProgress({ step, fraction }) });
       if (elmRef.current !== elm) return null; // отключились во время определения: старый результат не показываем
+      store.saveScan(result);
+      // Снимок настроек снимается до того, как результат станет виден: пока адаптер занят этим, другие операции не стартуют.
+      await takeSnapshot(elm, result);
+      if (elmRef.current !== elm) return null;
       setScan(result);
       setLiveScan(result);
-      store.saveScan(result);
       // Первый скан настоящего авто: демо-режим и демо-позиции больше не нужны — прячем.
       if (kindRef.current !== "demo" && !store.data.settings.hadRealScan) {
         store.updateSettings({ hadRealScan: true, showDemo: false });
@@ -162,12 +232,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setScanning(false);
       setProgress(null);
     }
-  }, [store]);
+  }, [store, takeSnapshot]);
+  const runScan = useCallback(() => exclusive("Определение автомобиля", runScanInner), [exclusive, runScanInner]);
   useEffect(() => {
     runScanRef.current = runScan;
   }, [runScan]);
 
-  const runDeepScan = useCallback(async () => {
+  const runDeepScanInner = useCallback(async () => {
     const elm = elmRef.current;
     const base = liveScan;
     if (!elm || !base) return 0;
@@ -191,6 +262,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setProgress(null);
     }
   }, [liveScan, store]);
+  const runDeepScan = useCallback(() => exclusive("Глубокий поиск блоков", runDeepScanInner), [exclusive, runDeepScanInner]);
 
   const value: Session = {
     connection,
@@ -202,6 +274,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     scanError,
     packages,
     codingPackages,
+    busy,
+    exclusive,
+    isIdle,
     connect,
     connectDemo,
     disconnect,

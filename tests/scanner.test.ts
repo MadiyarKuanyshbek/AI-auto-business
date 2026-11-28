@@ -219,3 +219,21 @@ describe("готовность систем и замороженный кадр
     expect(await readFreezeFrame(elm)).toBeNull();
   });
 });
+
+describe("запоминание данных автомобиля и магнитолы", () => {
+  it("разбирает свойства магнитолы и берёт только нужные", async () => {
+    const { parseProps } = await import("../src/core/adb");
+    const out = "[ro.product.model]: [MTCE]\r\n[ro.build.version.release]: [10]\r\n[ro.serialno]: [SECRET123]\r\n[persist.sys.locale]: [ru-RU]\r\n[ro.empty]: []";
+    const p = parseProps(out);
+    expect(p["ro.product.model"]).toBe("MTCE");
+    expect(p["persist.sys.locale"]).toBe("ru-RU");
+    expect(p["ro.serialno"]).toBeUndefined();
+  });
+  it("хранилище принимает снимки и магнитолы и отбрасывает мусор", async () => {
+    const { sanitizeData } = await import("../src/storage/model");
+    const d = sanitizeData({ vehicles: [{ id: "1", vin: "V", title: "T", createdAt: 1, scans: [], snapshots: [{ at: 1, via: "wifi" }] }], headUnits: [{ id: "h", device: "X", props: {}, packages: [] }, { nonsense: true }] });
+    expect(d.vehicles[0].snapshots).toHaveLength(1);
+    expect(d.headUnits).toHaveLength(1);
+    expect(sanitizeData({}).headUnits).toEqual([]);
+  });
+});

@@ -13,6 +13,7 @@ const SCREENS = [
   { name: "index", title: "Подключение", step: 1, glyph: "🔌" },
   { name: "cars", title: "Авто и прошивки", step: 2, glyph: "🚗", hasStack: true },
   { name: "interface", title: "Демо интерфейс авто", step: 3, glyph: "🖥️" },
+  { name: "files", title: "Поиск файлов", step: 4, glyph: "🔎" },
 ] as const;
 
 export default function TabsLayout() {

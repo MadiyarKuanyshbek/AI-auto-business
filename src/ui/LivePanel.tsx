@@ -14,7 +14,7 @@ const SHOWN = [0x0c, 0x0d, 0x05, 0x04, 0x0b, 0x11, 0x0f, 0x42, 0x10, 0x5c, 0x2f]
  * вкладки остаются в памяти, и иначе адаптер опрашивался бы в фоне и мешал сканированию и прошивке.
  */
 export function LivePanel() {
-  const { elm, scan } = useSession();
+  const { elm, scan, isIdle, exclusive } = useSession();
   const [on, setOn] = useState(false);
   const [values, setValues] = useState<Record<number, LiveValue>>({});
   const [error, setError] = useState<string | null>(null);
@@ -34,8 +34,13 @@ export function LivePanel() {
         while (alive.current) {
           for (const pid of pids) {
             if (!alive.current) return;
+            // Пока адаптер занят прошивкой, кодированием или определением автомобиля, живые данные не опрашиваем.
+            if (!isIdle()) {
+              await new Promise((r) => setTimeout(r, 400));
+              continue;
+            }
             try {
-              const v = await readPid(elm, pid);
+              const v = await exclusive("Живые данные", () => readPid(elm, pid));
               setValues((prev) => ({ ...prev, [pid]: v }));
               setHistory((h) => ({ ...h, [pid]: [...(h[pid] ?? []).slice(-59), v.value] }));
               rows.current.push(`${new Date().toISOString()};${v.name};${String(v.value).replace(".", ",")};${v.unit}`);
@@ -51,7 +56,7 @@ export function LivePanel() {
       return () => {
         alive.current = false;
       };
-    }, [on, elm, scan]),
+    }, [on, elm, scan, isIdle, exclusive]),
   );
 
   if (!elm) return <Muted>Живые данные доступны при подключённом адаптере.</Muted>;

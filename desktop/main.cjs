@@ -504,6 +504,9 @@ ipcMain.handle("adb:run", async (_e, { op, serial, address, pkg }) => {
     case "uninstall":
       if (!SERIAL_RE.test(String(serial)) || !PKG_RE.test(String(pkg))) return { ok: false, out: "Некорректные данные" };
       return runAdb(["-s", serial, "uninstall", pkg], 60000);
+    case "props":
+      if (!SERIAL_RE.test(String(serial))) return { ok: false, out: "Некорректное устройство" };
+      return runAdb(["-s", serial, "shell", "getprop"], 20000);
     case "locale":
       if (!SERIAL_RE.test(String(serial))) return { ok: false, out: "Некорректное устройство" };
       return runAdb(["-s", serial, "shell", "am", "start", "-a", "android.settings.LOCALE_SETTINGS"], 15000);
@@ -537,6 +540,302 @@ app.on("quit", () => {
     const exe = adbPath();
     if (fs.existsSync(exe)) execFile(exe, ["kill-server"], { windowsHide: true }, () => {});
   } catch {}
+});
+
+// ───────────── Копии оригинальной прошивки блоков (никогда не перезаписываются и не удаляются приложением) ─────────────
+// Перед каждой записью приложение читает оригинал блока и кладёт его сюда отдельным файлом с описанием и SHA-256.
+// Каждая копия получает своё уникальное имя: следующая прошивка не затирает прежнюю, вернуть можно любую из них.
+function fwBackupDir(vin) {
+  const safeVin = String(vin || "no-vin").replace(/[^\w\-]+/g, "_").slice(0, 40) || "no-vin";
+  const base = SELFTEST ? path.join(SELFTEST, "documents") : app.getPath("documents");
+  const dir = path.join(base, "AutoFlash", "FirmwareBackups", safeVin);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+ipcMain.handle("fwbackup:save", (_e, { vin, ecuName, txId, software, pkgId, pkgVersion, dataBase64 }) => {
+  if (typeof dataBase64 !== "string" || dataBase64.length > 80 * 1024 * 1024) throw new Error("Некорректная копия");
+  const data = Buffer.from(dataBase64, "base64");
+  if (data.length === 0) throw new Error("Пустая копия");
+  const dir = fwBackupDir(vin);
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const safe = (t) => String(t || "x").replace(/[^\w.\-]+/g, "_").slice(0, 40);
+  let base = `${safe(txId)}-${safe(software)}-${stamp}`;
+  for (let n = 1; fs.existsSync(path.join(dir, `${base}.bin`)); n++) base = `${safe(txId)}-${safe(software)}-${stamp}-${n}`;
+  const file = path.join(dir, `${base}.bin`);
+  const sha256 = crypto.createHash("sha256").update(data).digest("hex");
+  fs.writeFileSync(file, data, { flag: "wx" });
+  const meta = { id: base, vin: String(vin || ""), ecuName: String(ecuName || ""), txId: String(txId || ""), software: String(software || ""), pkgId: String(pkgId || ""), pkgVersion: String(pkgVersion || ""), at: Date.now(), size: data.length, sha256, file };
+  fs.writeFileSync(path.join(dir, `${base}.json`), JSON.stringify(meta, null, 2), { encoding: "utf8", flag: "wx" });
+  return meta;
+});
+
+ipcMain.handle("fwbackup:list", (_e, { vin }) => {
+  const root = path.dirname(fwBackupDir("x"));
+  const dirs = vin ? [fwBackupDir(vin)] : fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => path.join(root, d.name));
+  const out = [];
+  for (const dir of dirs) {
+    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".json"))) {
+      try {
+        const m = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
+        if (m && fs.existsSync(m.file)) out.push(m);
+      } catch {
+        // повреждённое описание пропускаем
+      }
+    }
+  }
+  return out.sort((a, b) => b.at - a.at);
+});
+
+// Прочитать копию для возврата: заново проверяем контрольную сумму, чтобы не записать в блок повреждённый файл.
+ipcMain.handle("fwbackup:read", (_e, { id, vin }) => {
+  const dir = fwBackupDir(vin);
+  const metaFile = path.join(dir, `${String(id).replace(/[^\w.\-]+/g, "_")}.json`);
+  if (!fs.existsSync(metaFile)) return { ok: false, error: "Копия не найдена" };
+  const meta = JSON.parse(fs.readFileSync(metaFile, "utf8"));
+  const data = fs.readFileSync(meta.file);
+  const sha = crypto.createHash("sha256").update(data).digest("hex");
+  if (sha !== meta.sha256) return { ok: false, error: "Контрольная сумма копии не совпала: файл повреждён, записывать его нельзя" };
+  return { ok: true, meta, dataBase64: data.toString("base64") };
+});
+
+ipcMain.handle("fwbackup:open-folder", (_e, { vin }) => shell.openPath(fwBackupDir(vin)));
+
+// ───────────── Поиск файлов в интернете и карантин ─────────────
+// Всё скачанное попадает в карантин («Документы\AutoFlash\Quarantine»): тип файла проверяется по содержимому, считается SHA-256,
+// файл сканирует антивирус Windows (Defender), исполняемые файлы блокируются. Ничего не запускается и не устанавливается само.
+const ALLOWED_EXT = ["apk", "zip", "bin", "hex", "s19", "srec", "mot", "pdf", "afpkg", "json", "7z", "rar", "img", "cab", "txt"];
+const BLOCKED_EXT = ["exe", "msi", "bat", "cmd", "ps1", "vbs", "js", "jse", "scr", "dll", "com", "lnk", "jar", "sh", "reg", "hta"];
+const MAX_DOWNLOAD = 600 * 1024 * 1024;
+
+function quarantineDir() {
+  return userDocsDir("Quarantine");
+}
+
+function sniffType(file) {
+  const fd = fs.openSync(file, "r");
+  const head = Buffer.alloc(8);
+  const n = fs.readSync(fd, head, 0, 8, 0);
+  fs.closeSync(fd);
+  if (n >= 2 && head[0] === 0x4d && head[1] === 0x5a) return "exe"; // MZ: исполняемый файл Windows
+  if (n >= 4 && head[0] === 0x7f && head.slice(1, 4).toString() === "ELF") return "elf";
+  if (n >= 4 && head.slice(0, 4).toString() === "%PDF") return "pdf";
+  if (n >= 4 && head[0] === 0x50 && head[1] === 0x4b) {
+    // zip или apk: у APK внутри есть AndroidManifest.xml (имя лежит в оглавлении архива в конце файла)
+    const size = fs.statSync(file).size;
+    const tail = Buffer.alloc(Math.min(size, 2 * 1024 * 1024));
+    const fd2 = fs.openSync(file, "r");
+    fs.readSync(fd2, tail, 0, tail.length, size - tail.length);
+    fs.closeSync(fd2);
+    return tail.includes("AndroidManifest.xml") ? "apk" : "zip";
+  }
+  const fd3 = fs.openSync(file, "r");
+  const probe = Buffer.alloc(2000);
+  const got = fs.readSync(fd3, probe, 0, 2000, 0);
+  fs.closeSync(fd3);
+  if (probe.slice(0, got).toString("utf8").trimStart().startsWith("{")) return "json";
+  return "bin";
+}
+
+function findDefender() {
+  const candidates = [path.join(process.env.ProgramFiles || "C:\\Program Files", "Windows Defender", "MpCmdRun.exe")];
+  const platform = path.join(process.env.ProgramData || "C:\\ProgramData", "Microsoft", "Windows Defender", "Platform");
+  try {
+    for (const v of fs.readdirSync(platform).sort().reverse()) candidates.unshift(path.join(platform, v, "MpCmdRun.exe"));
+  } catch {
+    // папки платформы нет
+  }
+  return candidates.find((c) => fs.existsSync(c)) || null;
+}
+
+function defenderScan(file) {
+  return new Promise((resolve) => {
+    const exe = process.platform === "win32" ? findDefender() : null;
+    if (!exe) return resolve("unavailable");
+    execFile(exe, ["-Scan", "-ScanType", "3", "-File", file, "-DisableRemediation"], { timeout: 180000, windowsHide: true }, (err) => {
+      if (!err) return resolve("clean");
+      resolve(err.code === 2 ? "threat" : "error");
+    });
+  });
+}
+
+/** Для APK: под какие процессоры собрано приложение (по именам папок lib/<процессор>/ в архиве). Пусто: приложение без своих библиотек. */
+function apkAbis(file) {
+  const size = fs.statSync(file).size;
+  const tail = Buffer.alloc(Math.min(size, 4 * 1024 * 1024));
+  const fd = fs.openSync(file, "r");
+  fs.readSync(fd, tail, 0, tail.length, size - tail.length);
+  fs.closeSync(fd);
+  const text = tail.toString("latin1");
+  return ["arm64-v8a", "armeabi-v7a", "x86_64", "x86"].filter((a) => text.includes(`lib/${a}/`));
+}
+
+async function analyzeFile(file) {
+  const size = fs.statSync(file).size;
+  const sha256 = await sha256File(file);
+  const type = sniffType(file);
+  const warnings = [];
+  if (type === "exe" || type === "elf") warnings.push("Это исполняемый файл программы, а не прошивка и не приложение для магнитолы. Принимать нельзя.");
+  const defender = type === "exe" || type === "elf" ? "skipped" : await defenderScan(file);
+  if (defender === "threat") warnings.push("Антивирус Windows нашёл угрозу в этом файле.");
+  if (defender === "unavailable") warnings.push("Антивирус Windows недоступен: проверить файл на вирусы не удалось.");
+  if (defender === "error") warnings.push("Антивирус не смог проверить файл.");
+  if (type === "bin") warnings.push("Тип файла не определён: это может быть образ прошивки. AutoFlash не записывает чужие образы напрямую (нужен пакет формата AutoFlash).");
+  return { size, sha256, type, defender, warnings, abis: type === "apk" ? apkAbis(file) : [], blocked: type === "exe" || type === "elf" || defender === "threat" };
+}
+
+function qMeta(id) {
+  const f = path.join(quarantineDir(), `${id}.json`);
+  return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : null;
+}
+
+function saveQuarantined(tmpFile, name, sourceUrl) {
+  return analyzeFile(tmpFile).then((a) => {
+    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const stored = path.join(quarantineDir(), `${id}-${name}`);
+    fs.renameSync(tmpFile, stored);
+    const meta = { id, name, sourceUrl, stored, at: Date.now(), ...a };
+    fs.writeFileSync(path.join(quarantineDir(), `${id}.json`), JSON.stringify(meta, null, 2), "utf8");
+    return meta;
+  });
+}
+
+function fileNameFrom(res, url) {
+  let name = "";
+  const cd = res.headers.get("content-disposition") || "";
+  const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
+  if (m) name = decodeURIComponent(m[1]);
+  if (!name) name = decodeURIComponent(new URL(url).pathname.split("/").filter(Boolean).pop() || "file");
+  return name.replace(/[^\w.\-а-яА-ЯёЁ ]+/g, "_").slice(0, 80) || "file";
+}
+
+ipcMain.handle("web:search", async (_e, { query }) => {
+  if (typeof query !== "string" || query.trim().length < 3 || query.length > 200) return { ok: false, results: [], error: "Слишком короткий или длинный запрос" };
+  try {
+    const r = await net.fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AutoFlash", Accept: "text/html" } });
+    if (!r.ok) return { ok: false, results: [], error: `Поисковик ответил ошибкой ${r.status}` };
+    const html = await r.text();
+    const results = [];
+    const re = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>)?/g;
+    let m;
+    const strip = (t) => String(t || "").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim();
+    while ((m = re.exec(html)) && results.length < 12) {
+      let url = m[1].replace(/&amp;/g, "&");
+      if (url.startsWith("//")) url = `https:${url}`;
+      try {
+        const u = new URL(url);
+        if (u.hostname.endsWith("duckduckgo.com") && u.searchParams.get("uddg")) url = u.searchParams.get("uddg");
+      } catch {
+        continue;
+      }
+      if (!/^https:\/\//.test(url)) continue;
+      results.push({ title: strip(m[2]).slice(0, 160), url, snippet: strip(m[3]).slice(0, 240) });
+    }
+    return results.length ? { ok: true, results } : { ok: false, results: [], error: "Поисковик не вернул результатов (или изменил страницу): откройте поиск в браузере" };
+  } catch {
+    return { ok: false, results: [], error: "Нет интернета или поисковик недоступен" };
+  }
+});
+
+ipcMain.handle("web:open", (_e, { url }) => {
+  if (typeof url !== "string" || !/^https:\/\/[^\s]+$/.test(url)) return false;
+  void shell.openExternal(url);
+  return true;
+});
+
+ipcMain.handle("quarantine:download", async (_e, { url }) => {
+  let u;
+  try {
+    u = new URL(String(url));
+  } catch {
+    return { ok: false, error: "Некорректный адрес" };
+  }
+  if (u.protocol !== "https:") return { ok: false, error: "Скачивать можно только по https" };
+  const urlExt = (decodeURIComponent(u.pathname).split(".").pop() || "").toLowerCase();
+  if (BLOCKED_EXT.includes(urlExt)) return { ok: false, error: `Файлы .${urlExt} запускают программы на компьютере: скачивание запрещено` };
+  const tmp = path.join(quarantineDir(), `download-${Date.now().toString(36)}.part`);
+  try {
+    const res = await net.fetch(u.toString(), { redirect: "follow" });
+    if (!res.ok || !res.body) return { ok: false, error: `Сервер ответил ошибкой ${res.status}` };
+    if (!String(res.url).startsWith("https://")) return { ok: false, error: "Сервер перенаправил на небезопасный адрес" };
+    const ctype = String(res.headers.get("content-type") || "").toLowerCase();
+    if (ctype.includes("text/html")) return { ok: false, error: "Это веб-страница, а не файл. Откройте её в браузере и найдите прямую ссылку на файл." };
+    const len = Number(res.headers.get("content-length") || 0);
+    if (len > MAX_DOWNLOAD) return { ok: false, error: "Файл больше 600 МБ: скачивание отменено" };
+    const name = fileNameFrom(res, String(res.url));
+    const ext = (name.split(".").pop() || "").toLowerCase();
+    if (BLOCKED_EXT.includes(ext)) return { ok: false, error: `Файлы .${ext} запускают программы на компьютере: скачивание запрещено` };
+    if (name.includes(".") && !ALLOWED_EXT.includes(ext)) return { ok: false, error: `Тип .${ext} не из списка разрешённых` };
+    let bytes = 0;
+    const src = Readable.fromWeb(res.body);
+    src.on("data", (c) => {
+      bytes += c.length;
+      if (bytes > MAX_DOWNLOAD) src.destroy(new Error("Файл больше 600 МБ"));
+    });
+    await pipeline(src, fs.createWriteStream(tmp));
+    const meta = await saveQuarantined(tmp, name, String(res.url));
+    return { ok: true, item: meta };
+  } catch (err) {
+    fs.rmSync(tmp, { force: true });
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
+// Для самопроверки: поместить локальный файл в карантин (проверяется тем же кодом, что и скачанное).
+ipcMain.handle("quarantine:add-local-for-test", async (_e, { file }) => {
+  if (!SELFTEST) return { ok: false, error: "Только для самопроверки" };
+  const tmp = path.join(quarantineDir(), `local-${Date.now().toString(36)}.part`);
+  fs.copyFileSync(String(file), tmp);
+  return { ok: true, item: await saveQuarantined(tmp, path.basename(String(file)), "local") };
+});
+
+ipcMain.handle("quarantine:list", () => {
+  const dir = quarantineDir();
+  return fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith(".json") && !f.includes("-"))
+    .map((f) => {
+      try {
+        return JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
+      } catch {
+        return null;
+      }
+    })
+    .filter((m) => m && fs.existsSync(m.stored))
+    .sort((a, b) => b.at - a.at);
+});
+
+// Текст небольшого пакета (.afpkg / json) из карантина, чтобы показать его описание и проверить, подходит ли он машине.
+ipcMain.handle("quarantine:read-text", (_e, { id }) => {
+  const meta = typeof id === "string" && /^[\w]+$/.test(id) ? qMeta(id) : null;
+  if (!meta || meta.type !== "json" || meta.size > 5 * 1024 * 1024) return null;
+  return fs.readFileSync(meta.stored, "utf8");
+});
+
+ipcMain.handle("quarantine:delete", (_e, { id }) => {
+  const meta = typeof id === "string" && /^[\w]+$/.test(id) ? qMeta(id) : null;
+  if (!meta) return false;
+  fs.rmSync(meta.stored, { force: true });
+  fs.rmSync(path.join(quarantineDir(), `${id}.json`), { force: true });
+  return true;
+});
+
+// Принять файл: APK уходит в библиотеку приложений; пакеты (.afpkg/.json) возвращаем текстом для проверки и добавления в библиотеку.
+ipcMain.handle("quarantine:accept", (_e, { id }) => {
+  const meta = typeof id === "string" && /^[\w]+$/.test(id) ? qMeta(id) : null;
+  if (!meta) return { ok: false, error: "Файл не найден в карантине" };
+  if (meta.blocked) return { ok: false, error: "Этот файл заблокирован проверкой: принимать его нельзя" };
+  if (meta.type === "apk") {
+    const dest = path.join(appsDir(), meta.name.replace(/\.part$/, ""));
+    fs.copyFileSync(meta.stored, dest);
+    fs.rmSync(meta.stored, { force: true });
+    fs.rmSync(path.join(quarantineDir(), `${id}.json`), { force: true });
+    return { ok: true, kind: "apk", dest };
+  }
+  if ((meta.type === "json" || /\.afpkg$/i.test(meta.name)) && meta.size < 20 * 1024 * 1024) {
+    return { ok: true, kind: "package", text: fs.readFileSync(meta.stored, "utf8"), id };
+  }
+  return { ok: false, error: "Приложение не знает, как использовать этот тип файла: для прошивок нужен пакет формата AutoFlash (конструктор пакета), для обновления магнитолы файл копируется на флешку в разделе «Приложения и русификация»." };
 });
 
 // ───────────── Проверка обновлений приложения (по запросу пользователя) ─────────────
@@ -635,7 +934,7 @@ ipcMain.handle("file:reveal", (_e, { file }) => {
 
 ipcMain.handle("file:save-text", (_e, { text, name, ext }) => {
   if (typeof text !== "string" || text.length > 20 * 1024 * 1024) throw new Error("Некорректные данные");
-  if (!["csv", "txt"].includes(ext)) throw new Error("Некорректный тип файла");
+  if (!["csv", "txt", "json"].includes(ext)) throw new Error("Некорректный тип файла");
   const day = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
   const file = path.join(userDocsDir("Reports"), safeFileName(`${name || "data"}-${day}`, ext));
   fs.writeFileSync(file, ext === "csv" ? `\uFEFF${text}` : text, "utf8"); // BOM: Excel правильно читает русские буквы
@@ -668,6 +967,8 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // Окно может быть свёрнуто или скрыто во время долгой записи: таймеры и обмен с адаптером не должны замедляться.
+      backgroundThrottling: false,
     },
   });
 

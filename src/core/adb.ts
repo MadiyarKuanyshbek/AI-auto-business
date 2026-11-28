@@ -64,3 +64,27 @@ export const RECOMMENDED_APPS: { name: string; purpose: string; url: string }[] 
 
 export const LANGUAGE_HINT =
   "Язык: Настройки → Система → Язык (если русского нет в списке, на магнитолу ставят приложение для смены языка, а на закрытых системах язык меняет только производитель обновлением).";
+
+/** Какие свойства магнитолы запоминаем (без серийных номеров и личных данных). */
+export const HEAD_UNIT_PROPS = [
+  "ro.product.manufacturer",
+  "ro.product.model",
+  "ro.product.device",
+  "ro.build.version.release",
+  "ro.build.version.sdk",
+  "ro.product.cpu.abi",
+  "ro.board.platform",
+  "ro.build.display.id",
+  "persist.sys.locale",
+  "ro.product.locale",
+] as const;
+
+/** Разбор `adb shell getprop`: строки вида `[ключ]: [значение]`, берём только нужные ключи. */
+export function parseProps(out: string, keys: readonly string[] = HEAD_UNIT_PROPS): Record<string, string> {
+  const res: Record<string, string> = {};
+  for (const line of out.split(/\r?\n/)) {
+    const m = /^\[([^\]]+)\]:\s*\[(.*)\]\s*$/.exec(line.trim());
+    if (m && keys.includes(m[1]) && m[2]) res[m[1]] = m[2];
+  }
+  return res;
+}

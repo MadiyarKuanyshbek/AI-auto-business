@@ -2,12 +2,24 @@ import { Stack, type ErrorBoundaryProps } from "expo-router";
 import { useEffect } from "react";
 import { Pressable, Text, View } from "react-native";
 import { logEvent } from "../liveLog";
+import { useSession } from "../session";
 import { useStore } from "../storage/store";
 import { StatusBar } from "expo-status-bar";
 import { SessionProvider } from "../session";
 import { StoreProvider } from "../storage/store";
 import { DesktopChooser } from "../ui/DesktopChooser";
 import { colors } from "../ui/kit";
+
+/** Показывает, какая операция сейчас держит адаптер: остальные ждут своей очереди. */
+function AdapterBusyBar() {
+  const { busy } = useSession();
+  if (!busy) return null;
+  return (
+    <View style={{ backgroundColor: "#1E3A5F", paddingVertical: 6, paddingHorizontal: 10 }}>
+      <Text style={{ color: "#CFE3FF", fontSize: 12, textAlign: "center" }}>Адаптер занят: {busy}. Остальные операции с автомобилем подождут окончания.</Text>
+    </View>
+  );
+}
 
 /** Полоса сверху, если данные не удаётся сохранить: иначе пользователь потеряет их молча. */
 function SaveBanner() {
@@ -33,6 +45,7 @@ export default function RootLayout() {
       <SessionProvider>
         <StatusBar style="light" />
         <SaveBanner />
+        <AdapterBusyBar />
         <DesktopChooser />
         <Stack
           screenOptions={{

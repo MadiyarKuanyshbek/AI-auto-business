@@ -10,7 +10,7 @@ import { Badge, Body, Button, Card, Empty, H2, Muted, Row, Screen, colors } from
 /** Кодирование блока: чтение настроек, выбор изменений, запись с проверкой и откатом. */
 export default function CodingScreen() {
   const { pkg: pkgId, ecu: txId } = useLocalSearchParams<{ pkg: string; ecu: string }>();
-  const { elm, liveScan, connection, codingPackages } = useSession();
+  const { elm, liveScan, connection, codingPackages, exclusive } = useSession();
   const store = useStore();
   const pkg = codingPackages.find((p) => p.id === pkgId);
   const ecu = liveScan?.ecus.find((e) => e.txId === txId);
@@ -27,7 +27,7 @@ export default function CodingScreen() {
     if (!elm || !ecu || !pkg) return;
     let alive = true;
     const t = setTimeout(() => {
-      readCoding(elm, ecu, pkg)
+      exclusive("Чтение настроек блока", () => readCoding(elm, ecu, pkg))
         .then((v) => {
           if (!alive) return;
           setOriginal(v);
@@ -40,7 +40,7 @@ export default function CodingScreen() {
       alive = false;
       clearTimeout(t);
     };
-  }, [elm, ecu, pkg]);
+  }, [elm, ecu, pkg, exclusive]);
 
   const next = useMemo(() => (original && pkg ? applyOptions(original, pkg, chosen) : null), [original, pkg, chosen]);
   const diff = original && next ? diffBytes(original, next) : [];
@@ -67,10 +67,11 @@ export default function CodingScreen() {
     if (!original || !next || !elm || !ecu || !pkg) return;
     setResult(null);
     setStep("Начинаю");
-    const res = await writeCoding(elm, ecu, pkg, original, next, setStep);
+    const res = await exclusive("Запись настроек блока", () => writeCoding(elm, ecu, pkg, original, next, setStep));
     setStep(null);
     if (res.status === "success") {
       store.addCodingRecord({ vin: liveScan?.vin ?? "", ecuName: ecu.name, txId: ecu.txId, did: pkg.target.did, pkgId: pkg.id, pkgTitle: pkg.title, before: original, after: next });
+      store.addFileLog({ kind: "coding", action: "installed", name: pkg.title, car: liveScan ? { title: vehicleTitle(liveScan), vin: liveScan.vin ?? "" } : undefined, note: `Блок ${ecu.name}: ${bytesHex(original)} → ${bytesHex(next)}` });
       setOriginal(next);
       setResult({ ok: true, text: "Настройки записаны и проверены. Если функция не появилась, выключите и включите зажигание." });
       setConsent(false);
@@ -82,12 +83,13 @@ export default function CodingScreen() {
   async function revert(before: number[], after: number[]) {
     if (!elm || !ecu || !pkg) return;
     setStep("Возвращаю прежние настройки");
-    const res = await writeCoding(elm, ecu, pkg, after, before, setStep);
+    const res = await exclusive("Возврат прежних настроек", () => writeCoding(elm, ecu, pkg, after, before, setStep));
     setStep(null);
     if (res.status === "success") {
       setOriginal(before);
       setChosen(activeOptions(before, pkg));
       store.addCodingRecord({ vin: liveScan?.vin ?? "", ecuName: ecu.name, txId: ecu.txId, did: pkg.target.did, pkgId: pkg.id, pkgTitle: `${pkg.title} (возврат)`, before: after, after: before });
+      store.addFileLog({ kind: "coding", action: "restored", name: pkg.title, car: { title: vehicleTitle(liveScan!), vin: liveScan!.vin ?? "" }, note: `Блок ${ecu.name}: ${bytesHex(after)} → ${bytesHex(before)}` });
       setResult({ ok: true, text: "Прежние настройки возвращены." });
     } else setResult({ ok: false, text: `Не удалось вернуть: ${res.error}` });
   }

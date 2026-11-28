@@ -14,7 +14,7 @@ import { printHtml } from "./print";
 
 /** Подробная диагностика подключённого авто: блоки, ошибки, живые данные, отчёты. */
 export function Diagnostics() {
-  const { scan, elm, runScan, runDeepScan, scanning, progress } = useSession();
+  const { scan, elm, runScan, runDeepScan, scanning, progress, exclusive } = useSession();
   const store = useStore();
   const [confirmClear, setConfirmClear] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -29,7 +29,7 @@ export function Diagnostics() {
   async function doClear() {
     if (!elm) return;
     try {
-      await clearDtcs(elm);
+      await exclusive("Сброс ошибок", () => clearDtcs(elm));
       setMessage("Ошибки сброшены. Если неисправность осталась, коды появятся снова.");
       setConfirmClear(false);
       await runScan();
@@ -42,7 +42,7 @@ export function Diagnostics() {
     if (!elm) return;
     setBusyCheck(true);
     try {
-      setReadiness(await readReadiness(elm));
+      setReadiness(await exclusive("Проверка готовности систем", () => readReadiness(elm)));
       setMessage(null);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Не удалось прочитать готовность систем");
@@ -55,7 +55,7 @@ export function Diagnostics() {
     if (!elm) return;
     setBusyCheck(true);
     try {
-      setFreeze({ ff: await readFreezeFrame(elm) });
+      setFreeze({ ff: await exclusive("Чтение замороженного кадра", () => readFreezeFrame(elm)) });
       setMessage(null);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Не удалось прочитать замороженный кадр");

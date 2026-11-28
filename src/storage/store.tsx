@@ -4,10 +4,11 @@ import type { VehicleScan } from "../core/scanner";
 import { desktopBridge } from "../transport/desktop";
 import { parsePackage } from "../core/package";
 import { parseCodingPackage } from "../core/coding";
-import { EMPTY_DATA, newId, sanitizeData, vehicleTitle, type AppData, type CarMedia, type CodingRecord, type InstallRecord, type QueueItem, type Settings, type VehicleRec } from "./model";
+import { EMPTY_DATA, newId, sanitizeData, vehicleTitle, type AppData, type CarMedia, type CodingRecord, type FileLogEntry, type HeadUnitSnapshot, type InstallRecord, type QueueItem, type VehicleSnapshot, type Settings, type VehicleRec } from "./model";
 
 const KEY = "autoflash.v1";
-const MAX_SCANS_PER_VEHICLE = 5;
+const MAX_SCANS_PER_VEHICLE = 20;
+const MAX_SNAPSHOTS_PER_VEHICLE = 30;
 
 type Store = {
   loaded: boolean;
@@ -25,6 +26,15 @@ type Store = {
   removeMedia(carId: string, mediaId: string): void;
   enqueue(item: Omit<QueueItem, "id" | "at">): void;
   addCodingRecord(rec: Omit<CodingRecord, "id" | "at">): void;
+  /** Запоминает настройки автомобиля при подключении (по VIN). */
+  saveSnapshot(vin: string, snap: VehicleSnapshot): void;
+  /** Запоминает данные магнитолы. */
+  saveHeadUnit(snap: Omit<HeadUnitSnapshot, "id" | "at">): void;
+  removeVehicle(id: string): void;
+  /** Добавляет запись в журнал файлов (что откуда, для какой машины, что сделано). */
+  addFileLog(entry: Omit<FileLogEntry, "id" | "at">): void;
+  /** Запоминает оценку источника по домену (хороший или плохой); null снимает оценку. */
+  rateSource(domain: string, rating: "good" | "bad" | null): void;
   dequeue(id: string): void;
   /** Полная копия данных в виде JSON-текста (для переноса на другой компьютер). */
   exportJson(): string;
@@ -108,6 +118,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         dataRef.current = next;
         setData(next);
         return result;
+      },
+      saveSnapshot(vin, snap) {
+        mutate((d) => ({
+          ...d,
+          vehicles: d.vehicles.map((v) => (v.vin === vin ? { ...v, snapshots: [...(v.snapshots ?? []), snap].slice(-MAX_SNAPSHOTS_PER_VEHICLE) } : v)),
+        }));
+      },
+      saveHeadUnit(snap) {
+        mutate((d) => ({ ...d, headUnits: [{ id: newId(), at: Date.now(), ...snap }, ...d.headUnits].slice(0, 30) }));
+      },
+      addFileLog(entry) {
+        mutate((d) => ({ ...d, fileLog: [{ id: newId(), at: Date.now(), ...entry }, ...d.fileLog].slice(0, 500) }));
+      },
+      rateSource(domain, rating) {
+        mutate((d) => {
+          const next = { ...d.sourceRatings };
+          if (rating) next[domain] = rating;
+          else delete next[domain];
+          return { ...d, sourceRatings: next };
+        });
+      },
+      removeVehicle(id) {
+        mutate((d) => ({ ...d, vehicles: d.vehicles.filter((v) => v.id !== id) }));
       },
       addCodingRecord(rec) {
         mutate((d) => ({ ...d, coding: [{ id: newId(), at: Date.now(), ...rec }, ...d.coding].slice(0, 200) }));

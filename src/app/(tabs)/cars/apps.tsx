@@ -1,10 +1,11 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Linking, Pressable, Text, View } from "react-native";
-import { LANGUAGE_HINT, RECOMMENDED_APPS, explainAdbError, parseAddress, parseDevices, parsePackages, type AdbDevice } from "../../../core/adb";
+import { LANGUAGE_HINT, RECOMMENDED_APPS, explainAdbError, parseAddress, parseDevices, parsePackages, parseProps, type AdbDevice } from "../../../core/adb";
 import { logEvent } from "../../../liveLog";
 import { useSession } from "../../../session";
 import { vehicleTitle } from "../../../storage/model";
+import { useStore } from "../../../storage/store";
 import { desktopBridge } from "../../../transport/desktop";
 import { Badge, Body, Button, Card, Field, H2, Muted, Screen, colors } from "../../../ui/kit";
 
@@ -37,6 +38,7 @@ export default function AppsScreen() {
   const [usbMessage, setUsbMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [libMessage, setLibMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
+  const store = useStore();
   const carTitle = liveScan ? vehicleTitle(liveScan) : null;
   const demo = connection.status === "ready" && connection.kind === "demo";
   const note = (line: string) => setLog((l) => [`${new Date().toLocaleTimeString("ru-RU")} ${line}`, ...l].slice(0, 30));
@@ -56,6 +58,25 @@ export default function AppsScreen() {
       if (r.ok) setPackages(parsePackages(r.out));
     },
     [bridge],
+  );
+
+  /** Запоминаем данные магнитолы (модель, Android, процессор, язык, приложения) для будущей работы с этой машиной. */
+  const rememberHeadUnit = useCallback(
+    async (id: string) => {
+      if (!bridge) return;
+      const props = parseProps((await bridge.adb.run({ op: "props", serial: id })).out);
+      const pk = await bridge.adb.run({ op: "packages", serial: id });
+      if (Object.keys(props).length === 0) return;
+      store.saveHeadUnit({
+        vin: liveScan?.vin ?? "",
+        via: id.includes(":") ? "wifi" : "usb",
+        device: [props["ro.product.manufacturer"], props["ro.product.model"]].filter(Boolean).join(" ") || id,
+        props,
+        packages: pk.ok ? parsePackages(pk.out) : [],
+      });
+      logEvent("Магнитола: данные сохранены в профиль автомобиля");
+    },
+    [bridge, store, liveScan],
   );
 
   /** Подключение к магнитоле по адресу; при успехе сразу показываем следующий шаг. */
@@ -82,13 +103,14 @@ export default function AppsScreen() {
       setMessage({ ok: true, text: `Подключение удалось: магнитола ${a.address}` });
       setDevices(parseDevices((await bridge.adb.run({ op: "devices" })).out));
       void loadPackages(a.address);
+      void rememberHeadUnit(a.address);
       if (action === "locale" || action === "settings") {
         await bridge.adb.run({ op: action, serial: a.address });
         setLog((l) => [`${new Date().toLocaleTimeString("ru-RU")} ${action === "locale" ? "Открыт выбор языка на магнитоле" : "Открыты настройки магнитолы"}`, ...l].slice(0, 30));
       }
       return true;
     },
-    [bridge, loadPackages],
+    [bridge, loadPackages, rememberHeadUnit],
   );
 
   /** Магнитола, подключённая USB-кабелем: ищем её среди устройств ADB. */
@@ -113,10 +135,11 @@ export default function AppsScreen() {
       setSerial(id);
       setMessage({ ok: true, text: `Подключение удалось: магнитола по USB-кабелю (${id})` });
       void loadPackages(id);
+      void rememberHeadUnit(id);
       if (action === "locale" || action === "settings") await bridge.adb.run({ op: action, serial: id });
       return true;
     },
-    [bridge, loadPackages],
+    [bridge, loadPackages, rememberHeadUnit],
   );
 
   const findHeadUnits = useCallback(
@@ -245,6 +268,7 @@ export default function AppsScreen() {
     note(`Установка ${apk ?? ""}: ${done ? "успешно" : "ошибка"}`);
     logEvent(`Магнитола: установка ${apk ?? ""}: ${done ? "успешно" : "ошибка"}`);
     if (done) {
+      store.addFileLog({ kind: "apk", action: "installed", name: apk ?? "приложение", car: liveScan ? { title: vehicleTitle(liveScan), vin: liveScan.vin ?? "" } : undefined, note: `На магнитолу ${serial}` });
       setMessage({ ok: true, text: `Установлено: ${apk}` });
       await loadPackages(serial);
     } else setMessage({ ok: false, text: explainAdbError(r.out) });
@@ -254,6 +278,7 @@ export default function AppsScreen() {
     if (!bridge || !serial) return;
     const r = await bridge.adb.run({ op: "uninstall", serial, pkg });
     note(`Удаление ${pkg}: ${r.ok ? "успешно" : "ошибка"}`);
+    if (r.ok) store.addFileLog({ kind: "apk", action: "uninstalled", name: pkg, car: liveScan ? { title: vehicleTitle(liveScan), vin: liveScan.vin ?? "" } : undefined, note: `С магнитолы ${serial}` });
     if (!r.ok) setMessage({ ok: false, text: explainAdbError(r.out) });
     await loadPackages(serial);
   }

@@ -74,6 +74,8 @@ async function run(win, outDir, app) {
     return true;
   };
 
+  const pageHas = (t) => lastPageText.includes(t);
+  let lastPageText = "";
   const closeSheet = async () => {
     if ((await text()).includes("Подключено. Что сделать?")) {
       await click("Закрыть");
@@ -135,7 +137,7 @@ async function run(win, outDir, app) {
 
     // ── Меню слева: два пункта по порядку ──
     const nav = await js(`(() => {
-      const names = ['1. Подключение', '2. Авто и прошивки', '3. Демо интерфейс авто'];
+      const names = ['1. Подключение', '2. Авто и прошивки', '3. Демо интерфейс авто', '4. Поиск файлов'];
       return names.map(n => {
         const el = [...document.querySelectorAll('div,span')].filter(e => e.textContent.trim() === n && e.children.length === 0)[0];
         if (!el) return null;
@@ -143,7 +145,7 @@ async function run(win, outDir, app) {
         return { x: Math.round(r.x), y: Math.round(r.y) };
       });
     })()`);
-    step("меню слева вертикально, три пункта по порядку", nav.every(Boolean) && nav.every((p) => p.x < 300) && nav[1].y > nav[0].y && nav[2].y > nav[1].y, JSON.stringify(nav));
+    step("меню слева вертикально, четыре пункта по порядку", nav.every(Boolean) && nav.every((p) => p.x < 300) && nav[1].y > nav[0].y && nav[2].y > nav[1].y && nav[3].y > nav[2].y, JSON.stringify(nav));
     const menuText = await text();
     step("вкладок «Клиенты» и «Настройки» нет", !menuText.includes("Клиенты и заказы") && !menuText.split(String.fromCharCode(10)).map((t) => t.trim()).includes("Настройки"));
 
@@ -301,7 +303,9 @@ async function run(win, outDir, app) {
       return true;
     };
     step("кодирование: у блока коробки есть кнопка изменения настроек", (await text()).includes("Демо: настройки коробки DSG") && await click("Изменить настройки блока"));
-    step("кодирование: прочитаны текущие настройки блока", await waitText("01 00 20 00", 8000) && (await text()).includes("Что включить"));
+    const codVal = await waitText("01 00 20 00", 60000);
+    const codHead = await waitText("Что включить", 5000);
+    step("кодирование: прочитаны текущие настройки блока", codVal && codHead, `val=${codVal} head=${codHead} ${((await text()).match(/Текущие настройки блока[\s\S]{0,60}/) || ["нет"])[0].replace(/\s+/g, " ")}`);
     step("кодирование: выбор настройки «Подсказка передачи» меняет будущее значение", await clickTestId("opt-gear-hint") && await waitText("01 00 30 00", 4000));
     await shot("08b-coding");
     step("кодирование: без подтверждения запись заблокирована", (await text()).includes("Записать настройки"));
@@ -310,6 +314,17 @@ async function run(win, outDir, app) {
     step("кодирование: возврат прежних настроек из журнала", await click("Вернуть «Было»") && await waitText("Прежние настройки возвращены", 20000));
     await js("history.back()");
     await sleep(700);
+
+    // ── «Мои автомобили»: приложение само запомнило машину при подключении ──
+    await click("Мои автомобили");
+    await sleep(600);
+    step("мои автомобили: машина появилась сама после подключения", await waitText("VIN: WVWZZZ1KZBW123456", 6000));
+    step("мои автомобили: показаны подключения и блоки", (await text()).includes("Подключений:") && (await text()).includes("Блоков:"));
+    step("мои автомобили: раскрытие показывает способ связи, адаптер и настройки блоков", await click("Показать, что запомнено") && await waitText("Настройки блоков (кодирование)", 5000) && (await text()).includes("STN2120"));
+    step("мои автомобили: значения настроек коробки сохранены", (await text()).includes("01 00 20 00"));
+    await shot("08c-my-cars");
+    await click("Блоки автомобиля");
+    await sleep(500);
 
     // ── Подробная диагностика (раскрывается по кнопке) ──
     step("кнопка подробной диагностики", await click("Подробная диагностика"));
@@ -373,6 +388,28 @@ async function run(win, outDir, app) {
     await goTo("3. Демо интерфейс авто", "interface");
     step("вкладка 3: файл отмечен «Установлено в этот автомобиль»", await waitText("Установлено в этот автомобиль", 6000));
     await shot("14-interface-installed");
+    // ── Копии оригинальной прошивки: сохраняются на диск и не затираются следующими установками ──
+    const fwList = await js(`window.autoflash.fwbackup.list("WVWZZZ1KZBW123456").then((l) => JSON.stringify({ n: l.length, files: new Set(l.map((x) => x.file)).size, ecus: l.map((x) => x.txId).sort() }))`);
+    step("копии прошивки: после двух установок на диске две разные копии оригиналов (7E0 и 7E4)", /"n":2,"files":2/.test(String(fwList)) && String(fwList).includes("7E0") && String(fwList).includes("7E4"), String(fwList));
+    const fwRead = await js(`window.autoflash.fwbackup.list("WVWZZZ1KZBW123456").then((l) => window.autoflash.fwbackup.read(l[0].id, l[0].vin)).then((r) => JSON.stringify({ ok: r.ok, size: r.ok ? atob(r.dataBase64).length : 0 }))`);
+    step("копии прошивки: копию можно прочитать обратно с проверкой контрольной суммы", /"ok":true/.test(String(fwRead)), String(fwRead));
+
+
+    // ── Возврат прежней прошивки из сохранённой копии ──
+    await goTo("2. Авто и прошивки", "cars");
+    await click("2. Авто и прошивки");
+    await sleep(900);
+    await click("Мои автомобили");
+    await sleep(600);
+    step("копии прошивки: в «Моих автомобилях» видны сохранённые оригиналы", await click("Показать, что запомнено") && await waitText("Сохранённая оригинальная прошивка блоков (2)", 8000));
+    step("возврат прошивки: экран проверяет VIN, блок, пакет и напряжение", await click("Вернуть эту прошивку") && await waitText("Вернуть прежнюю прошивку", 6000) && await waitText("VIN совпадает", 6000) && (await text()).includes("Блок найден") && (await text()).includes("есть в библиотеке"));
+    step("возврат прошивки: без подтверждения кнопка недоступна", (await text()).includes("Вернуть эту прошивку"));
+    step("возврат прошивки: подтверждение и запись", await clickTestId("restore-consent") && await click("Вернуть эту прошивку") && await waitText("Прежняя прошивка записана обратно", 40000));
+    await shot("14b-restored");
+    await js("history.back()");
+    await sleep(700);
+    await goTo("3. Демо интерфейс авто", "interface");
+    await sleep(600);
 
     // Поиск в третьей вкладке
     step("вкладка 3: поиск «камри»", await fill("Поиск автомобиля", "камри"));
@@ -488,6 +525,38 @@ async function run(win, outDir, app) {
     step("приложения: adb.exe запущен, отказ магнитолы объяснён", await waitText(/отказала в подключении|не отвечает/, 60000) && !(await text()).includes("Не найден adb.exe"));
     await js("history.back()");
     await sleep(600);
+
+    // ── Поиск и карантин ──
+    const qDir = path.join(outDir, "samples");
+    fs.mkdirSync(qDir, { recursive: true });
+    fs.writeFileSync(path.join(qDir, "tool.exe"), Buffer.from("MZ\u0090\u0000fake-exe-for-test"));
+    fs.writeFileSync(path.join(qDir, "notes.json"), JSON.stringify({ hello: "world" }));
+    const exeRes = await js(`window.autoflash.finder.addLocalForTest(${JSON.stringify(path.join(qDir, "tool.exe"))}).then((r) => JSON.stringify({ ok: r.ok, type: r.item && r.item.type, blocked: r.item && r.item.blocked, defender: r.item && r.item.defender }))`);
+    step("карантин: исполняемый файл распознан по содержимому и заблокирован", String(exeRes).includes('"type":"exe"') && String(exeRes).includes('"blocked":true'), String(exeRes));
+    const jsonRes = await js(`window.autoflash.finder.addLocalForTest(${JSON.stringify(path.join(qDir, "notes.json"))}).then((r) => JSON.stringify({ type: r.item && r.item.type, sha: r.item && r.item.sha256.length, defender: r.item && r.item.defender }))`);
+    step("карантин: безобидный файл проверен (тип, SHA-256, антивирус)", String(jsonRes).includes('"type":"json"') && String(jsonRes).includes('"sha":64') && /"defender":"(clean|unavailable|error)"/.test(String(jsonRes)), String(jsonRes));
+    const dlHttp = await js(`window.autoflash.finder.download("http://example.com/a.apk").then((r) => JSON.stringify(r))`);
+    step("карантин: скачивание по http без шифрования отклоняется", String(dlHttp).includes('"ok":false'), String(dlHttp).slice(0, 90));
+    const dlExe = await js(`window.autoflash.finder.download("https://example.com/setup.exe").then((r) => JSON.stringify(r))`);
+    step("карантин: адрес на .exe отклоняется до скачивания", String(dlExe).includes('"ok":false'), String(dlExe).slice(0, 110));
+    const searchRes = await js(`window.autoflash.finder.search("Chery Tiggo 8 firmware").then((r) => JSON.stringify({ ok: r.ok, n: r.results.length, hasErr: !!r.error }))`);
+    step("поиск в интернете: отвечает результатами или понятной ошибкой", /"ok":(true|false)/.test(String(searchRes)), String(searchRes));
+    // ── Вкладка 4 «Поиск файлов»: карантин, проверка «подойдёт ли», журнал и источники ──
+    await goTo("4. Поиск файлов", "files");
+    step("вкладка 4: открыта, есть разделы поиска, карантина, журнала и источников", await waitText("Поиск файлов", 4000) && (lastPageText = await text(), ["Карантин (", "Журнал (", "Источники"].every((t) => pageHas(t))));
+    step("вкладка 4: показаны шаги и подсказка про отдельную работу", (await text()).includes("Как это работает") && (await text()).includes("Работает отдельно от подключения к машине"));
+    step("вкладка 4: предлагаются запросы по марке и модели", await waitText("русификация магнитолы русский язык", 4000));
+    step("вкладка 4: раздел «Карантин» показывает файлы с проверкой", await click("Карантин (", { exact: false }) && await waitText("notes.json", 6000) && (await text()).includes("tool.exe"));
+    step("вкладка 4: исполняемый файл заблокирован, чужой json не подходит", (await text()).includes("Программа Windows") && (await text()).includes("не читается как пакет AutoFlash"));
+    await shot("08d-files-tab");
+    step("вкладка 4: удаление из карантина попадает в журнал как «Отклонено»", await click("Удалить из карантина") && await click("Журнал (", { exact: false }) && await waitText("Отклонено", 5000));
+    step("вкладка 4: в журнале видно, что установлено и для какой машины", (await text()).includes("Установлено") && (await text()).includes("для: VOLKSWAGEN"));
+    step("вкладка 4: источники: оценок нет, поясняется как это работает", await click("Источники") && (await text()).includes("запоминает ваши оценки источников"));
+    await goTo("2. Авто и прошивки", "cars");
+    await click("2. Авто и прошивки");
+    await sleep(900);
+
+
 
 
     // Демо-пакет на настоящем канале должен быть недоступен: после первого настоящего скана демо скрыто.

@@ -13,6 +13,7 @@ import { vehicleTitle } from "../../../storage/model";
 import { Badge, Body, Button, Card, Empty, Field, H1, H2, Muted, Row, Screen, colors } from "../../../ui/kit";
 import { AboutCard } from "../../../ui/AboutCard";
 import { BackupCard } from "../../../ui/BackupCard";
+import { VehiclesSection } from "../../../ui/VehiclesSection";
 import { Diagnostics } from "../../../ui/Diagnostics";
 import { codingFitsEcu } from "../../../core/coding";
 import { CHINESE_MAKES, DIFFERENCE, TASKS, type TaskKind } from "../../../core/guides";
@@ -27,12 +28,12 @@ export default function CarsScreen() {
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [showDiag, setShowDiag] = useState(false);
-  const [section, setSection] = useState<"tasks" | "blocks" | "search" | "library">("tasks");
+  const [section, setSection] = useState<"tasks" | "blocks" | "search" | "library" | "vehicles">("tasks");
   const [allMakes, setAllMakes] = useState(false);
   const sectionParam = useLocalSearchParams<{ section?: string }>().section;
   // Переход с других экранов может сразу открыть нужный раздел (например, «Блоки автомобиля»).
   useEffect(() => {
-    if (sectionParam !== "blocks" && sectionParam !== "search" && sectionParam !== "library" && sectionParam !== "tasks") return;
+    if (sectionParam !== "blocks" && sectionParam !== "search" && sectionParam !== "library" && sectionParam !== "tasks" && sectionParam !== "vehicles") return;
     const t = setTimeout(() => setSection(sectionParam), 0);
     return () => clearTimeout(t);
   }, [sectionParam]);
@@ -65,7 +66,7 @@ export default function CarsScreen() {
         {!connected ? <Button title="Подключиться к автомобилю" kind="ghost" onPress={() => router.push("/")} /> : null}
       </Card>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-        {([["tasks", "Что сделать"], ["blocks", "Блоки автомобиля"], ["search", "Поиск моделей"], ["library", "Библиотека пакетов"]] as const).map(([key, label]) => (
+        {([["tasks", "Что сделать"], ["blocks", "Блоки автомобиля"], ["search", "Поиск моделей"], ["library", "Библиотека пакетов"], ["vehicles", "Мои автомобили"]] as const).map(([key, label]) => (
           <Pressable key={key} testID={`section-${key}`} onPress={() => setSection(key)} style={{ flexGrow: 1, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, alignItems: "center", backgroundColor: section === key ? colors.accent : colors.card, borderWidth: 1, borderColor: colors.border }}>
             <Text style={{ color: colors.text, fontWeight: "700" }}>{label}</Text>
           </Pressable>
@@ -85,6 +86,11 @@ export default function CarsScreen() {
           </Card>
         );
       })}
+      <Card>
+        <Body style={{ fontWeight: "800", fontSize: 17 }}>🔎 Найти и проверить файлы</Body>
+        <Muted>Отдельная вкладка «4. Поиск файлов»: ищет прошивки, кодирование, русификацию и приложения, проверяет, подходят ли они машине, и ведёт журнал, откуда что скачано. Ничего не ставит сама.</Muted>
+        <Button title="Открыть вкладку поиска файлов" onPress={() => router.push("/files")} />
+      </Card>
       <Card>
         <Body style={{ fontWeight: "700" }}>Чем это отличается</Body>
         {DIFFERENCE.map((d) => (
@@ -217,6 +223,13 @@ export default function CarsScreen() {
         </>
       )}
 
+        </>
+      ) : null}
+
+      {section === "vehicles" ? (
+        <>
+          <H2>Мои автомобили</H2>
+          <VehiclesSection />
         </>
       ) : null}
 

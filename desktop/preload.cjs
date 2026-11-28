@@ -47,6 +47,22 @@ contextBridge.exposeInMainWorld("autoflash", {
     choose: (file) => ipcRenderer.invoke("apps:choose", { file }),
     openFolder: () => ipcRenderer.invoke("apps:open-folder"),
   },
+  finder: {
+    search: (query) => ipcRenderer.invoke("web:search", { query }),
+    openUrl: (url) => ipcRenderer.invoke("web:open", { url }),
+    download: (url) => ipcRenderer.invoke("quarantine:download", { url }),
+    list: () => ipcRenderer.invoke("quarantine:list"),
+    remove: (id) => ipcRenderer.invoke("quarantine:delete", { id }),
+    readText: (id) => ipcRenderer.invoke("quarantine:read-text", { id }),
+    accept: (id) => ipcRenderer.invoke("quarantine:accept", { id }),
+    addLocalForTest: (file) => ipcRenderer.invoke("quarantine:add-local-for-test", { file }),
+  },
+  fwbackup: {
+    save: (data) => ipcRenderer.invoke("fwbackup:save", data),
+    list: (vin) => ipcRenderer.invoke("fwbackup:list", { vin }),
+    read: (id, vin) => ipcRenderer.invoke("fwbackup:read", { id, vin }),
+    openFolder: (vin) => ipcRenderer.invoke("fwbackup:open-folder", { vin }),
+  },
   update: {
     check: () => ipcRenderer.invoke("update:check"),
     open: (url) => ipcRenderer.invoke("update:open", { url }),
